@@ -18,6 +18,10 @@ knitr::opts_chunk$set(echo = TRUE)
 ```{r load_data, include=FALSE}
 feed_data<-read.csv("data/feeding_data_3.28.21.csv", header=T)
 
+po<-read.csv("data/4_Day_PO.csv", header = T) #Corrected_Change is the Active PO per sample (8 ind. per sample)
+
+growth<-read.csv("data/growth_data_3.28.21.csv", header=T)
+
 ```
 
 
@@ -64,12 +68,43 @@ animal_mean <- feed_data %>%
 
 
 #Exploratory Plots
-```{r feeding_rate_plots, echo=FALSE}
+```{r feeding_rate_plot, echo=FALSE}
 animal_mean %>%
   ggplot()+
   geom_boxplot(aes(x=as.factor(Age), y=fr_sw, color=Time_treatment))+
   scale_color_manual(values=c("goldenrod2", "darkblue"))+
   facet_grid(.~Exposed.Control)+
   theme_bw()
+
+```
+
+```{r po_plots, echo=FALSE}
+po %>%
+  ggplot()+
+  geom_point(aes(x=Hours_from_Start, y =Corrected_Change, color=Time_treatment))+
+  scale_color_manual(values=c("goldenrod2", "darkblue"))+
+  geom_smooth(aes(x=Hours_from_Start, y =Corrected_Change), color="black", span=1)+
+  theme_bw()
+
+po %>%
+  ggplot(aes(x=Age, y = Corrected_Change, color=Phase))+
+  geom_point()+
+  geom_smooth(method="lm")
+
+po %>%
+  ggplot(aes(x=Age, y = Corrected_Change/8, color=Phase))+
+  geom_point()+
+  geom_smooth(method="lm")
+
+```
+
+```{r growth_plot, echo=FALSE}
+growth %>%
+  filter(Age == 6) %>%
+  ggplot(aes(x=days_post_exposure, y=Length_at_exposure_mm, color=as.factor(Animal)))+
+  geom_point()+
+  geom_line()+
+  facet_grid(Time_treatment~.)
+
 ```
 
