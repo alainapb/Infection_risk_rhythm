@@ -22,6 +22,8 @@ po<-read.csv("data/4_Day_PO.csv", header = T) #Corrected_Change is the Active PO
 
 growth<-read.csv("data/growth_data_3.28.21.csv", header=T)
 
+life<-read.csv("data/life_data_3.28.21.csv", header =T)
+
 ```
 
 
@@ -100,11 +102,33 @@ po %>%
 
 ```{r growth_plot, echo=FALSE}
 growth %>%
-  filter(Age == 6) %>%
+  filter(Age == 7) %>%
   ggplot(aes(x=days_post_exposure, y=Length_at_exposure_mm, color=as.factor(Animal)))+
   geom_point()+
   geom_line()+
   facet_grid(Time_treatment~.)
+
+#lag and lead
+
+```
+
+
+```{r infection_plot, echo=FALSE}
+
+# infection prevalence
+life %>%
+  filter(Treatment == "Exposed") %>%
+  ggplot(aes(x=Age_at_exposure, y=infected, color=Day.Night))+
+  geom_jitter()+
+  geom_smooth(method="lm")
+
+
+#infection intensity
+life %>%
+  filter(Treatment == "Exposed") %>%
+  ggplot(aes(x=Age_at_exposure, y=spore_counts, color=Day.Night))+
+  geom_point()+
+  geom_smooth(method="lm")
 
 ```
 
