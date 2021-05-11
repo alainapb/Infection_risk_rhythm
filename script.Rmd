@@ -62,20 +62,50 @@ animal_mean <- feed_data %>%
   #group based on these variables
   group_by(Time_treatment, Age, Animal, Exposed.Control) %>%
   #means based on groups above
-  summarise(fr_sw = mean(fr_sw, na.rm=TRUE))
+  summarise(fr_sw = mean(fr_sw, na.rm=TRUE)) 
+
+```
 
 
+#Merge dataframes
+```{r combine_dataframes, include=FALSE}
+#combine feeding rates with life history data 
+merge(animal_mean, life, by=c("Age", "Time_treatment", "Animal", "Exposed.Control"), keep=TRUE) %>%
+  mutate(id = paste(Age,
+                    Time_treatment,
+                    Animal,
+                    Exposed.Control, 
+                    sep = "_")) %>%
+           as.data.frame()->all.data
 
+
+#create id for growth data 
+growth %>%
+  mutate(id = paste(Age,
+                    Time_treatment,
+                    Animal,
+                    Exposed.Control, 
+                    sep = "_")) %>%
+           as.data.frame()->growth
 ```
 
 
 #Exploratory Plots
 ```{r feeding_rate_plot, echo=FALSE}
-animal_mean %>%
+all.data %>%
+  filter(Sex == "F")%>%
   ggplot()+
   geom_boxplot(aes(x=as.factor(Age), y=fr_sw, color=Time_treatment))+
   scale_color_manual(values=c("goldenrod2", "darkblue"))+
   facet_grid(.~Exposed.Control)+
+  theme_bw()
+
+all.data %>%
+  filter(Sex == "F")%>%
+  ggplot()+
+  geom_jitter(aes(x=Time_treatment, y=fr_sw, color=Exposed.Control))+
+  scale_color_manual(values=c("black", "limegreen"))+
+  facet_grid(.~Age)+
   theme_bw()
 
 ```
@@ -100,9 +130,30 @@ po %>%
 
 ```
 
-```{r growth_plot, echo=FALSE}
+```{r growth_plots, echo=FALSE}
+growth %>%
+  filter(Age == 6) %>%
+  ggplot(aes(x=days_post_exposure, y=Length_at_exposure_mm, color=as.factor(Animal)))+
+  geom_point()+
+  geom_line()+
+  facet_grid(Time_treatment~.)
+
 growth %>%
   filter(Age == 7) %>%
+  ggplot(aes(x=days_post_exposure, y=Length_at_exposure_mm, color=as.factor(Animal)))+
+  geom_point()+
+  geom_line()+
+  facet_grid(Time_treatment~.)
+
+growth %>%
+  filter(Age == 8) %>%
+  ggplot(aes(x=days_post_exposure, y=Length_at_exposure_mm, color=as.factor(Animal)))+
+  geom_point()+
+  geom_line()+
+  facet_grid(Time_treatment~.)
+
+growth %>%
+  filter(Age == 9) %>%
   ggplot(aes(x=days_post_exposure, y=Length_at_exposure_mm, color=as.factor(Animal)))+
   geom_point()+
   geom_line()+
@@ -116,19 +167,81 @@ growth %>%
 ```{r infection_plot, echo=FALSE}
 
 # infection prevalence
-life %>%
-  filter(Treatment == "Exposed") %>%
-  ggplot(aes(x=Age_at_exposure, y=infected, color=Day.Night))+
-  geom_jitter()+
-  geom_smooth(method="lm")
+all.data %>%
+  filter(Time_treatment == "Exposed" | Sex == "F") %>%
+  ggplot(aes(x=Age, y=infected, color=Time_treatment))+
+  scale_color_manual(values=c("goldenrod2", "darkblue"))+
+  geom_jitter(width = .1, height = .1)+
+  geom_smooth(method="lm")+
+  scale_y_continuous(limits=c(-.1,1))+
+  scale_x_continuous(breaks=c(6,7,8,9))+
+  theme_bw()
 
 
 #infection intensity
 life %>%
-  filter(Treatment == "Exposed") %>%
-  ggplot(aes(x=Age_at_exposure, y=spore_counts, color=Day.Night))+
+  filter(Time_treatment == "Exposed"| Sex == "F") %>%
+  ggplot(aes(x=Age, y=spore_counts, color=Time_treatment))+
+  scale_color_manual(values=c("goldenrod2", "darkblue"))+
+  #geom_jitter(width=.25)+
   geom_point()+
-  geom_smooth(method="lm")
+  geom_smooth(method="lm")+
+  theme_bw()
 
+```
+
+
+```{r offsrping_plots, echo=FALSE}
+
+#total offspring
+all.data %>%
+  filter(Sex == "F") %>%
+  #filter(infected != "NA") %>%     #removes controls
+  ggplot(aes(x=Time_treatment, y=total_offspring, fill=as.factor(infected)))+
+  geom_boxplot()+
+  facet_grid(~Age)
+
+
+#age at first clutch
+all.data %>% 
+  filter(Sex == "F") %>%
+  #filter(infected != "NA") %>%     #removes controls
+  ggplot(aes(x=Time_treatment, y=age_at_first_clutch, fill=as.factor(infected)))+
+  geom_boxplot()+
+  facet_grid(~Age)
+
+```
+
+
+#Stats
+```{r po}
+
+#Does PO differ across a day (Resting = Light hours, Active = dark hours) and across ages? 
+summary(po_model<-glm(Corrected_Change ~ Phase*as.factor(Age), data=po))
+plot(po_model)
+
+newdata<-expand.grid(Phase=c("Active", "Resting"), Age = 6:9)
+newdata$preds<-predict(po_model, newdata=newdata)
+
+newdata %>%
+  ggplot()+
+  geom_line(aes(x=Age, y=preds, color=Phase))+
+  geom_point(po, mapping=aes(x=Age, y=Corrected_Change, color=Phase), alpha = 0.5)
+```
+
+
+
+```{r infection_prevalence}
+prev <- all.data %>%
+  filter(Exposed.Control == "Exposed") %>%
+  group_by(Age, Time_treatment) %>%
+  summarise(inf = sum(infected, na.rm=T),
+            n = length(infected),
+            prev = inf/n)
+
+#Does infection prevalence increase with age and night exposure?
+summary(inf_model<-glm(infected ~ Age*Time_treatment, 
+               family = binomial, 
+               data=filter(all.data, Exposed.Control == "Exposed")))
 ```
 
