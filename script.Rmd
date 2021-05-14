@@ -240,8 +240,19 @@ prev <- all.data %>%
             prev = inf/n)
 
 #Does infection prevalence increase with age and night exposure?
-summary(inf_model<-glm(infected ~ Age*Time_treatment, 
+summary(inf_model<-glm(infected ~ as.factor(Age)+Time_treatment, 
                family = binomial, 
                data=filter(all.data, Exposed.Control == "Exposed")))
+
+```
+
+
+```{r}
+
+#Does infection intensity increase with Age and night exposure?
+summary(spore_model<-glm(spore_counts ~ as.factor(Age) * Time_treatment, family = poisson(), data=filter(all.data, infected == 1)))
+plot(spore_model)
+
+
 ```
 
