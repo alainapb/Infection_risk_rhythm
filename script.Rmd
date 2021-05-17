@@ -92,8 +92,9 @@ growth %>%
                     Exposed.Control, 
                     sep = "_")) %>%
            as.data.frame()->growth
+# join growth data to feeding rate and life history data
+all.data <- inner_join(all.data, growth, by = c("Age", "Time_treatment", "Animal", "Exposed.Control", "id"))
 ```
-
 
 #Exploratory Plots
 ```{r feeding_rate_plot, echo=FALSE}
@@ -214,6 +215,8 @@ all.data %>%
 
 
 #Stats
+
+# PO
 ```{r po}
 
 #Does PO differ across a day (Resting = Light hours, Active = dark hours) and across ages? 
@@ -229,35 +232,40 @@ newdata %>%
   geom_point(po, mapping=aes(x=Age, y=Corrected_Change, color=Phase), alpha = 0.5)
 ```
 
+# infection
+
 
 
 ```{r infection_prevalence}
 prev <- all.data %>%
-  filter(Exposed.Control == "Exposed") %>%
+  filter(Exposed.Control == "Exposed", 
+         days_post_exposure == 0) %>%
   group_by(Age, Time_treatment) %>%
   summarise(inf = sum(infected, na.rm=T),
-            n = length(infected),
+            n = n(),
             prev = inf/n)
 
+prev %>% knitr::kable()
+
+prev %>% ggplot() +
+  geom_point(aes(x = Age, y = prev, col = Time_treatment)) +
+  geom_line(aes(x = Age, y = prev, col = Time_treatment)) +
+  ylim(0,1)
+```
+
+```{r}
 #Does infection prevalence increase with age and night exposure?
 summary(inf_model<-glm(infected ~ as.factor(Age)+Time_treatment, 
                family = binomial, 
                data=filter(all.data, Exposed.Control == "Exposed")))
-
-```
-
-```{r}
-plot(inf_model, 1)
+# plot(inf_model, 1)
 ```
 
 
 ```{r}
-
 #Does infection intensity increase with Age and night exposure?
 summary(spore_model<-glm(spore_counts ~ as.factor(Age) * Time_treatment, family = poisson(), data=filter(all.data, infected == 1)))
 plot(spore_model)
-
-
 ```
 
 # spore intensity
