@@ -20,7 +20,10 @@ feed_data<-read.csv("data/feeding_data_3.28.21.csv", header=T)
 
 po<-read.csv("data/4_Day_PO.csv", header = T) #Corrected_Change is the Active PO per sample (~8 ind. per sample)
 
-po_correct<-read.csv("data/PO_biodare_sample_correction.csv", header = T)
+po_correct<- # sample number is arbitrary
+  read_csv("data/PO_biodare_sample_correction.csv") %>%
+  pivot_longer(cols = 2:5, names_sep = "_", 
+               names_to = c(NA,"sample"), values_to = "PO")
 
 growth<-read.csv("data/growth_data_3.28.21.csv", header=T)
 
@@ -121,17 +124,10 @@ po %>%
   theme_bw()
 
 po_correct %>%
-  ggplot()+
-  geom_point(aes(x=time, y = PO))+
-  geom_point(aes(x=time, y = PO.1), color="red")+
-  geom_point(aes(x=time, y = PO.2), color="blue")+
-  geom_point(aes(x=time, y = PO.3), color="orange")+
-  geom_smooth(aes(x=time, y = PO), color="black", method="lm")+
-  geom_smooth(aes(x=time, y = PO.1), color="red", method="lm")+
-  geom_smooth(aes(x=time, y = PO.2), color="blue", method="lm")+
-  geom_smooth(aes(x=time, y = PO.3), color="orange", method="lm")+
+  ggplot() +
+  geom_point(aes(x = time, y = PO, group = sample)) +
+  geom_smooth(aes(x = time, y = PO), method = "lm") +
   theme_bw()
-
 ```
 
 ```{r growth_plots, echo=FALSE}
