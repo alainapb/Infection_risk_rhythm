@@ -258,25 +258,55 @@ prev %>% ggplot() +
 # arbitrarily choose 0 days post exposure since the data is duplicated for each days_post_exposure
 reg_data <- filter(all.data, Exposed.Control == "Exposed", days_post_exposure == 0) 
 
-#Does infection prevalence increase with age and night exposure?
-# summary(inf_model<-glm(infected ~ as.factor(Age)+Time_treatment, 
-#                family = binomial, 
-#                data=filter(all.data, Exposed.Control == "Exposed")))
-# plot(inf_model, 1)
+# logistic regression
+# model 1: Time_treatment only
+inf_time <- glm(infected ~ Time_treatment, family = binomial , data = reg_data)
+# model 2: common linear effect of age with Time_treatment specific intercepts
+inf_main <- glm(infected ~ Age + Time_treatment, family = binomial, data = reg_data)
+# model 3: Time_treatment specific intercept and slopes
+inf_full_lin <- glm(infected ~ Age * Time_treatment, family = binomial, data = reg_data)
+# model 4: full interaction model with age as categorical
+inf_full_cat <- glm(infected ~ factor(Age) * Time_treatment, family = binomial , data = reg_data)
+
+# 
+summary(inf_time)
+summary(inf_main)
+summary(inf_full_lin)
+summary(inf_full_cat)
+
+# residual plots
+plot(inf_time, 1)
+plot(inf_main, 1)
+plot(inf_full_lin, 1)
+plot(inf_full_cat, 1)
 ```
 
+Based on the sign of the coefficient for Time_treatment, all models agree that night-time exposure increases the probability of infection. The model with just time of exposure is pretty good compared to the others. Based on the likelihood ratio tests and AIC comparison below, I think that if we were going to choose one model that we should go with model 2 (infected ~ Age + time_treatment).
+
+Note: We should try including age at death as a predictor of infection (if it makes sense, i.e., dying soon after exposure "censors" the infection outcome) or spore counts.
 
 ```{r}
-#Does infection intensity increase with Age and night exposure?
-summary(spore_model<-glm(spore_counts ~ as.factor(Age) * Time_treatment, family = poisson(), data=reg_data))
-plot(spore_model)
+# likelihood ratio test for significance of linear age term
+# marginally significant
+car::Anova(inf_main, test = "LR")
+
+# likelihood ratio test for significance of exposure time specific effect of age
+# Not significant
+car::Anova(inf_full_lin, test = "LR")
+
 ```
+
+```{r}
+AIC(inf_time, inf_main, inf_full_lin, inf_full_cat) %>%
+  mutate(deltaAIC = AIC - min(AIC)) %>% add_column(model = c("time", "Age + time", "Age*time", "factor(Age)*time"), .before = 1)
+```
+
 
 # spore intensity
 
 ```{r}
 zero_summary <- 
-  all.data %>% filter(Exposed.Control == "Exposed") %>%
+  all.data %>% filter(Exposed.Control == "Exposed", days_post_exposure == 0) %>%
   group_by(Age, Time_treatment) %>%
   summarise(mean_spore_counts = mean(spore_counts, na.rm = TRUE),
             var_spore_counts = var(spore_counts, na.rm = TRUE),
@@ -285,15 +315,6 @@ zero_summary <-
             n_infected = sum(infected == 1, na.rm = TRUE),
             n_animals = n())
 zero_summary %>% knitr::kable(digits = 2)
-```
-
-Zero infections in Age 6 Day group. Can't look at interaction if fitting by MLE.
-
-```{r}
-all.data %>% filter(Exposed.Control == "Exposed") %>%
-  group_by(Age, Time_treatment) %>%
-  filter(Age == 6, Time_treatment == "Day", Exposed.Control == "Exposed") 
-  
 ```
 
 ### Fit regular count models
