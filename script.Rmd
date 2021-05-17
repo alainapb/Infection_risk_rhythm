@@ -254,17 +254,21 @@ prev %>% ggplot() +
 ```
 
 ```{r}
+# get subset for infection and spore count analysis
+# arbitrarily choose 0 days post exposure since the data is duplicated for each days_post_exposure
+reg_data <- filter(all.data, Exposed.Control == "Exposed", days_post_exposure == 0) 
+
 #Does infection prevalence increase with age and night exposure?
-summary(inf_model<-glm(infected ~ as.factor(Age)+Time_treatment, 
-               family = binomial, 
-               data=filter(all.data, Exposed.Control == "Exposed")))
+# summary(inf_model<-glm(infected ~ as.factor(Age)+Time_treatment, 
+#                family = binomial, 
+#                data=filter(all.data, Exposed.Control == "Exposed")))
 # plot(inf_model, 1)
 ```
 
 
 ```{r}
 #Does infection intensity increase with Age and night exposure?
-summary(spore_model<-glm(spore_counts ~ as.factor(Age) * Time_treatment, family = poisson(), data=filter(all.data, infected == 1)))
+summary(spore_model<-glm(spore_counts ~ as.factor(Age) * Time_treatment, family = poisson(), data=reg_data))
 plot(spore_model)
 ```
 
@@ -295,8 +299,6 @@ all.data %>% filter(Exposed.Control == "Exposed") %>%
 ### Fit regular count models
 
 ```{r}
-reg_data <- filter(all.data, Exposed.Control == "Exposed")
-
 spore_pois <- glm(spore_counts ~ as.factor(Age) * Time_treatment, family = poisson(), data=reg_data)
 spore_nb <- MASS::glm.nb(spore_counts ~ as.factor(Age) * Time_treatment,  data=reg_data)
 
