@@ -246,6 +246,10 @@ summary(inf_model<-glm(infected ~ as.factor(Age)+Time_treatment,
 
 ```
 
+```{r}
+plot(inf_model, 1)
+```
+
 
 ```{r}
 
@@ -254,5 +258,110 @@ summary(spore_model<-glm(spore_counts ~ as.factor(Age) * Time_treatment, family 
 plot(spore_model)
 
 
+```
+
+# spore intensity
+
+```{r}
+zero_summary <- 
+  all.data %>% filter(Exposed.Control == "Exposed") %>%
+  group_by(Age, Time_treatment) %>%
+  summarise(mean_spore_counts = mean(spore_counts, na.rm = TRUE),
+            var_spore_counts = var(spore_counts, na.rm = TRUE),
+            n_zeros = sum(spore_counts == 0, na.rm = TRUE),
+            n_na = sum(is.na(spore_counts)),
+            n_infected = sum(infected == 1, na.rm = TRUE),
+            n_animals = n())
+zero_summary %>% knitr::kable(digits = 2)
+```
+
+Zero infections in Age 6 Day group. Can't look at interaction if fitting by MLE.
+
+```{r}
+all.data %>% filter(Exposed.Control == "Exposed") %>%
+  group_by(Age, Time_treatment) %>%
+  filter(Age == 6, Time_treatment == "Day", Exposed.Control == "Exposed") 
+  
+```
+
+### Fit regular count models
+
+```{r}
+reg_data <- filter(all.data, Exposed.Control == "Exposed")
+
+spore_pois <- glm(spore_counts ~ as.factor(Age) * Time_treatment, family = poisson(), data=reg_data)
+spore_nb <- MASS::glm.nb(spore_counts ~ as.factor(Age) * Time_treatment,  data=reg_data)
+
+summary(spore_pois)
+summary(spore_nb)
+```
+
+Standard errors are huge. Due to excess zeros?
+
+### zero-inflated and hurdle models
+
+```{r}
+library(pscl)
+# poisson
+hurdle_poisson_full <-   hurdle(spore_counts ~ as.factor(Age) * Time_treatment | as.factor(Age) + Time_treatment, 
+       dist = "poisson", zero.dist = "binomial", data = reg_data)
+zi_poisson_full <- zeroinfl(spore_counts ~ as.factor(Age) * Time_treatment | as.factor(Age) + Time_treatment, 
+       dist = "poisson", link = "logit", data = reg_data)
+hurdle_poisson_main <-   hurdle(spore_counts ~ as.factor(Age) + Time_treatment | as.factor(Age) + Time_treatment, 
+       dist = "poisson", zero.dist = "binomial", data = reg_data)
+zi_poisson_main <- zeroinfl(spore_counts ~ as.factor(Age) + Time_treatment | as.factor(Age) + Time_treatment, 
+       dist = "poisson", link = "logit", data = reg_data)
+# negative binomial
+hurdle_nb_full <-   hurdle(spore_counts ~ as.factor(Age) * Time_treatment | as.factor(Age) + Time_treatment,
+       dist = "negbin", zero.dist = "binomial", data = reg_data)
+zi_nb_full <- zeroinfl(spore_counts ~ as.factor(Age) * Time_treatment | as.factor(Age) + Time_treatment,
+       dist = "negbin", link = "logit", data = reg_data)
+hurdle_nb_main <-   hurdle(spore_counts ~ as.factor(Age) + Time_treatment | as.factor(Age) + Time_treatment,
+       dist = "negbin", zero.dist = "binomial", data = reg_data)
+zi_nb_main <- zeroinfl(spore_counts ~ as.factor(Age) + Time_treatment | as.factor(Age) + Time_treatment,
+       dist = "negbin", link = "logit", data = reg_data)
+zi_nb_lin_age_int <- zeroinfl(spore_counts ~ Age * Time_treatment | as.factor(Age) + Time_treatment,
+       dist = "negbin", link = "logit", data = reg_data)
+zi_nb_lin_age_main <- zeroinfl(spore_counts ~ Age + Time_treatment | as.factor(Age) + Time_treatment,
+       dist = "negbin", link = "logit", data = reg_data)
+```
+
+Full hurdle models are computationally singular.Probably due to separation. Do not consider those models further.
+
+```{r}
+# AIC(zi_poisson_full,hurdle_poisson_main,zi_poisson_main,
+#     zi_nb_full,hurdle_nb_main,zi_nb_main) %>%
+AIC(zi_nb_lin_age_int,
+    zi_nb_lin_age_main) %>%
+
+  mutate(deltaAIC = AIC - min(AIC))
+```
+
+Top 3 models all have (truncated) negative binomial count response. Zero-inflated and hurdle model about the same for main effects in count part and full interaction model for counts is also in the top.
+
+```{r}
+summary(zi_nb_full)
+summary(zi_nb_main)
+summary(hurdle_nb_main)
+summary(zi_nb_lin_age_main)
+```
+
+```{r}
+zero_summary$response <- predict(zi_nb_lin_age_main, newdata = zero_summary, type = "response")
+zero_summary$count <- predict(zi_nb_lin_age_main, newdata = zero_summary, type = "count")
+zero_summary$prob_zero <- predict(zi_nb_lin_age_main, newdata = zero_summary, type = "zero")
+
+zero_summary %>% knitr::kable(digits = 2)
+```
+
+
+# zero-inflated model predictions
+
+```{r}
+zero_summary$zeros_zi_full <- predict(zi_nb_full, newdata = zero_summary,  type = "zero")
+
+zero_summary %>% 
+  mutate(zeros_zi_full = zeros_zi_full * n_animals) %>%
+  select(Time_treatment, n_zeros, zeros_zi_full , n_infected)
 ```
 
