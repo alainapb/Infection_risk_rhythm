@@ -283,7 +283,7 @@ plot(inf_full_cat, 1)
 
 Based on the sign of the coefficient for Time_treatment, all models agree that night-time exposure increases the probability of infection. The model with just time of exposure is pretty good compared to the others. Based on the likelihood ratio tests and AIC comparison below, I think that if we were going to choose one model that we should go with model 2 (infected ~ Age + time_treatment).
 
-Note: We should try including age at death as a predictor of infection (if it makes sense, i.e., dying soon after exposure "censors" the infection outcome) or spore counts.
+Note: We should try including age at death as a predictor of infection (if it makes sense, i.e., dying soon after exposure "censors" the infection outcome) or spore counts. Nevermind, these data are already coded as NA if daphnia die before age 8.
 
 ```{r}
 # likelihood ratio test for significance of linear age term
@@ -302,11 +302,110 @@ AIC(inf_time, inf_main, inf_full_lin, inf_full_cat) %>%
 ```
 
 
+```{r}
+crit <- 1.96
+
+inf_preds <- 
+  predict(inf_main, newdata = prev, type = "link", se.fit = TRUE) %>% 
+  as_tibble() %>%
+  mutate(half = crit * se.fit,
+         lwr = fit - half,
+         upr = fit + half,
+         fit = boot::inv.logit(fit),
+         lwr = boot::inv.logit(lwr),
+         upr = boot::inv.logit(upr)) %>%
+  cbind(prev)
+
+inf_preds %>%
+  ggplot() +
+  geom_line(aes(x = Age, y = fit, col = Time_treatment, linetype = Time_treatment)) +
+  geom_ribbon(aes(x = Age, ymin = lwr, ymax = upr, fill = Time_treatment), alpha = 0.3) +
+  geom_point(aes(x  = Age, y = prev, col = Time_treatment, shape = Time_treatment), size = 2) +
+  ylim(0,1) +
+  theme_bw()
+```
+
+Comparison of model predicted probability of infection plus 95% Wald CI and the observed prevalence. It is clear that the probability of infection is greater during the night than the day. There is some evidence that the probability of infection increases with the age of exposure.
+
+```{r}
+# make table of estimated probabilities and 95% CI
+inf_preds %>% select(Age, Time_treatment, inf, n, prev, fit, lwr, upr) %>%
+  group_by(Age, Time_treatment) %>%
+  transmute("observed prevalence" = paste0(round(prev, 2), " (", inf, "/" , n, ")"),
+         "estimated prevelence" = paste0(round(prev,2), " (", round(lwr,2), ", ", round(upr,2), ")")) %>%
+  knitr::kable()
+  
+```
+
+
+```{r}
+library(mcprofile)
+K <- matrix(c(1, 6, 0,
+              1, 6, 1,
+              1, 7, 0,
+              1, 7, 1,
+              1, 8, 0,
+              1, 8, 1,
+              1, 9, 0,
+              1, 9, 1), byrow = TRUE, nrow = 8, ncol = 3)
+
+lin.combo <- mcprofile(inf_main, CM = K)
+# get CI for log odds
+inf_CI_unadjusted <- confint(lin.combo, level = 0.95, adjust = "none")
+inf_CI_bonferroni <- confint(lin.combo, level = 0.95, adjust = "bonferroni")
+
+# transform estimate and interval to probability scale
+inf_CI_lr_unadjusted <-  cbind(inf_CI_unadjusted$estimate, inf_CI_unadjusted$confint) %>%
+  mutate(prob = boot::inv.logit(Estimate),
+         prob_lwr = boot::inv.logit(lower),
+         prob_upr = boot::inv.logit(upper),
+         adjust = "none") %>%
+  cbind(prev)
+
+inf_CI_lr_bonferroni <- cbind(inf_CI_bonferroni$estimate, inf_CI_bonferroni$confint) %>%
+  mutate(prob = boot::inv.logit(Estimate),
+         prob_lwr = boot::inv.logit(lower),
+         prob_upr = boot::inv.logit(upper),
+         adjust = "Bonferroni") %>%
+  cbind(prev)
+
+inf_lr_CI <- rbind(inf_CI_lr_bonferroni, inf_CI_lr_unadjusted)
+inf_lr_CI %>% knitr::kable(digits = 2)
+```
+
+We are 95% confident that the odds of infection when Daphnia are exposed at night is 1.31 to 2.76 times as large when exposed at day when age of exposure is held constant. We are 95% confident that the odds of infection 
+
+```{r}
+inf_lr_CI %>%
+  ggplot() +
+  geom_line(aes(x = Age, y = prob, col = Time_treatment)) +
+  geom_ribbon(aes(x = Age, ymin = prob_lwr, ymax = prob_upr, fill = Time_treatment), alpha = 0.3) +
+  geom_point(aes(x = Age, y = prev, col = Time_treatment)) +
+  facet_wrap(~adjust)
+```
+```{r}
+K <- matrix(c(0, 1, 0,
+              0, 0, 1), 
+            byrow = TRUE, nrow = 2, ncol = 3)
+
+lin.combo <- mcprofile(inf_main, CM = K)
+# get CI for log odds
+inf_OR_unadjusted <- confint(lin.combo, level = 0.95, adjust = "none")
+inf_OR_bonferroni <- confint(lin.combo, level = 0.95, adjust = "bonferroni")
+
+inf_OR_unadjusted
+```
+
+```{r}
+confint(inf_main, level = 0.95)
+```
+
+
 # spore intensity
 
 ```{r}
 zero_summary <- 
-  all.data %>% filter(Exposed.Control == "Exposed", days_post_exposure == 0) %>%
+  reg_data %>%
   group_by(Age, Time_treatment) %>%
   summarise(mean_spore_counts = mean(spore_counts, na.rm = TRUE),
             var_spore_counts = var(spore_counts, na.rm = TRUE),
@@ -317,53 +416,124 @@ zero_summary <-
 zero_summary %>% knitr::kable(digits = 2)
 ```
 
-### Fit regular count models
+There are a good deal of zeros. The variance is much bigger than the mean in many treatment combinations. Zero-inflated negative binomial makes sense here.
 
 ```{r}
-spore_pois <- glm(spore_counts ~ as.factor(Age) * Time_treatment, family = poisson(), data=reg_data)
-spore_nb <- MASS::glm.nb(spore_counts ~ as.factor(Age) * Time_treatment,  data=reg_data)
-
-summary(spore_pois)
-summary(spore_nb)
+ggplot() +
+  geom_jitter(data = filter(reg_data, Time_treatment == "Day"), 
+              aes(x = Age - 0.1, y = spore_counts, col = Time_treatment), height = 0, width = 0.1) +
+  geom_jitter(data = filter(reg_data, Time_treatment == "Night"), 
+              aes(x = Age + 0.1, y = spore_counts, col = Time_treatment), height = 0, width = 0.1) +
+  geom_point(data = filter(zero_summary, Time_treatment == "Day"), 
+             aes(x = Age - 0.1, y = mean_spore_counts, col = Time_treatment), 
+             size = 4, shape = 3) +
+  geom_point(data = filter(zero_summary, Time_treatment == "Night"), 
+             aes(x = Age + 0.1, y = mean_spore_counts, col = Time_treatment), 
+             size = 4, shape = 3) 
 ```
 
-Standard errors are huge. Due to excess zeros?
+There appears to be an age effect in spore counts. Individuals that were infected at age 9 have a greater mean spore count than individuals infected at day 6 (all Daphnia were followed up for 12 days post-exposure, i.e., for age 6 individuals their spores were counted at age 18 and age 9 daphnia were counted at age 21). This might be caused by size differences between different aged individuals since maybe daphnia that are bigger over the course of the 12 days that spores could develop would provide more energy for spore production. We could try to account for this using body size (length or length^3^ (since feeding seems to correlate with surface area)) at time of exposure as a baseline (The reg_data set already has this measurement).
+
+Sidebar: it may be interesting to try and include the growth curves as a functional covariate since maybe it is a proxy for how much total energy is available to spore production over the interval we allow them to grow.
+
+```{r}
+# Per pscl vignette suggestions, lets look at the log count 
+# since we use log link for count model
+# log(x + 0.5)
+clog <- function(x) log(x + 0.5)
+
+ggplot() +
+  geom_jitter(data = filter(reg_data, Time_treatment == "Day"), 
+              aes(x = Age - 0.1, y = clog(spore_counts), col = Time_treatment), height = 0, width = 0.1) +
+  geom_jitter(data = filter(reg_data, Time_treatment == "Night"), 
+              aes(x = Age + 0.1, y = clog(spore_counts), col = Time_treatment), height = 0, width = 0.1)  +
+    geom_point(data = filter(zero_summary, Time_treatment == "Day"), 
+             aes(x = Age - 0.1, y = clog(mean_spore_counts), col = Time_treatment), 
+             size = 4, shape = 3) +
+  geom_point(data = filter(zero_summary, Time_treatment == "Night"), 
+             aes(x = Age + 0.1, y = clog(mean_spore_counts), col = Time_treatment), 
+             size = 4, shape = 3) 
+
+#plot(clog(spore_counts) ~ factor(interaction(Time_treatment, factor(Age))), data = reg_data)
+```
+
+Looking at the log count, it actually appears that only the day treatment has an positive effect of age on spore count. There doesn't appear to be any age effect on mean spore count for the night treatment.
+
+```{r}
+# look for potential colinearity
+reg_data %>%
+  ggplot() +
+  geom_jitter(aes(x = Age, y = Length_at_exposure_mm, col = factor(infected)))
+
+reg_data %>%
+  ggplot() +
+  geom_jitter(aes(x = Age, y = Length_at_exposure_mm^3, col = factor(infected)))
+
+cor.test(reg_data$Age, reg_data$Length_at_exposure_mm)
+```
+
+Hmm, maybe length at exposure isn't that informative?
 
 ### zero-inflated and hurdle models
 
+It's not clear to me how to evaluate the fit of the these models. Need to figure out. DHARMa?
+
 ```{r}
 library(pscl)
-# poisson
-hurdle_poisson_full <-   hurdle(spore_counts ~ as.factor(Age) * Time_treatment | as.factor(Age) + Time_treatment, 
-       dist = "poisson", zero.dist = "binomial", data = reg_data)
-zi_poisson_full <- zeroinfl(spore_counts ~ as.factor(Age) * Time_treatment | as.factor(Age) + Time_treatment, 
-       dist = "poisson", link = "logit", data = reg_data)
-hurdle_poisson_main <-   hurdle(spore_counts ~ as.factor(Age) + Time_treatment | as.factor(Age) + Time_treatment, 
-       dist = "poisson", zero.dist = "binomial", data = reg_data)
-zi_poisson_main <- zeroinfl(spore_counts ~ as.factor(Age) + Time_treatment | as.factor(Age) + Time_treatment, 
-       dist = "poisson", link = "logit", data = reg_data)
+library(lmtest)
+
+model_formulas <- 
+  c(spore_counts ~ 1 | 1,
+    spore_counts ~ 1 | Age + Time_treatment,
+    spore_counts ~ 1 | Time_treatment,
+    spore_counts ~ Time_treatment | Time_treatment,
+    spore_counts ~ Time_treatment | Age + Time_treatment, 
+    spore_counts ~ Time_treatment*Age | Age + Time_treatment,
+    spore_counts ~ Time_treatment*Age | Time_treatment,
+                  spore_counts ~ Time_treatment + Age | Age + Time_treatment, 
+                  spore_counts ~ Time_treatment * Age | Age + Time_treatment, 
+                  spore_counts ~ Time_treatment + Length_at_exposure_mm | Age + Time_treatment, 
+                  spore_counts ~ Time_treatment + poly(Length_at_exposure_mm, 3) | Age + Time_treatment,
+                  spore_counts ~ Time_treatment + poly(Length_at_exposure_mm, 3) + Age | Age + Time_treatment,
+                  spore_counts ~ Time_treatment + Length_at_exposure_mm + Age | Age + Time_treatment)
+
+# fit all models
+mod_list <- lapply(seq_along(model_formulas), function(x) hurdle(model_formulas[[x]],
+                                                                 dist = "negbin", link = "logit", data = reg_data))
+
+# print AIC
+map_dbl(mod_list, AIC)
+```
+
+```{r}
+lrtest(mod_list[[2]], mod_list[[3]])
+lrtest(mod_list[[3]], mod_list[[4]])
+```
+
+```{r}
+# take closer look at model 7 which I think is reasonable based on EDA
+summary(mod_list[[7]])
+```
+
+
+```{r}
 # negative binomial
-hurdle_nb_full <-   hurdle(spore_counts ~ as.factor(Age) * Time_treatment | as.factor(Age) + Time_treatment,
-       dist = "negbin", zero.dist = "binomial", data = reg_data)
-zi_nb_full <- zeroinfl(spore_counts ~ as.factor(Age) * Time_treatment | as.factor(Age) + Time_treatment,
-       dist = "negbin", link = "logit", data = reg_data)
-hurdle_nb_main <-   hurdle(spore_counts ~ as.factor(Age) + Time_treatment | as.factor(Age) + Time_treatment,
-       dist = "negbin", zero.dist = "binomial", data = reg_data)
-zi_nb_main <- zeroinfl(spore_counts ~ as.factor(Age) + Time_treatment | as.factor(Age) + Time_treatment,
-       dist = "negbin", link = "logit", data = reg_data)
 zi_nb_lin_age_int <- zeroinfl(spore_counts ~ Age * Time_treatment | as.factor(Age) + Time_treatment,
        dist = "negbin", link = "logit", data = reg_data)
 zi_nb_lin_age_main <- zeroinfl(spore_counts ~ Age + Time_treatment | as.factor(Age) + Time_treatment,
        dist = "negbin", link = "logit", data = reg_data)
-```
 
-Full hurdle models are computationally singular.Probably due to separation. Do not consider those models further.
+zi_nb_lin_age_both_int <- zeroinfl(spore_counts ~ Age * Time_treatment | Age + Time_treatment,
+       dist = "negbin", link = "logit", data = reg_data)
+zi_nb_lin_age_both_main <- zeroinfl(spore_counts ~ Age + Time_treatment | Age + Time_treatment,
+       dist = "negbin", link = "logit", data = reg_data)
 
-```{r}
 # AIC(zi_poisson_full,hurdle_poisson_main,zi_poisson_main,
 #     zi_nb_full,hurdle_nb_main,zi_nb_main) %>%
 AIC(zi_nb_lin_age_int,
-    zi_nb_lin_age_main) %>%
+    zi_nb_lin_age_main,
+    zi_nb_lin_age_both_int,
+    zi_nb_lin_age_both_main) %>%
 
   mutate(deltaAIC = AIC - min(AIC))
 ```
@@ -371,9 +541,9 @@ AIC(zi_nb_lin_age_int,
 Top 3 models all have (truncated) negative binomial count response. Zero-inflated and hurdle model about the same for main effects in count part and full interaction model for counts is also in the top.
 
 ```{r}
-summary(zi_nb_full)
-summary(zi_nb_main)
-summary(hurdle_nb_main)
+# summary(zi_nb_full)
+# summary(zi_nb_main)
+# summary(hurdle_nb_main)
 summary(zi_nb_lin_age_main)
 ```
 
@@ -385,14 +555,10 @@ zero_summary$prob_zero <- predict(zi_nb_lin_age_main, newdata = zero_summary, ty
 zero_summary %>% knitr::kable(digits = 2)
 ```
 
-
-# zero-inflated model predictions
-
 ```{r}
-zero_summary$zeros_zi_full <- predict(zi_nb_full, newdata = zero_summary,  type = "zero")
+zero_summary$response <- predict(zi_nb_lin_age_both_main, newdata = zero_summary, type = "response")
+zero_summary$count <- predict(zi_nb_lin_age_both_main, newdata = zero_summary, type = "count")
+zero_summary$prob_zero <- predict(zi_nb_lin_age_both_main, newdata = zero_summary, type = "zero")
 
-zero_summary %>% 
-  mutate(zeros_zi_full = zeros_zi_full * n_animals) %>%
-  select(Time_treatment, n_zeros, zeros_zi_full , n_infected)
+zero_summary %>% knitr::kable(digits = 2)
 ```
-
