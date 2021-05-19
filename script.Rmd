@@ -407,13 +407,20 @@ confint(inf_main, level = 0.95)
 zero_summary <- 
   reg_data %>%
   group_by(Age, Time_treatment) %>%
+  mutate(conditional_spore = ifelse(infected == 0, NA, spore_counts)) %>%
   summarise(mean_spore_counts = mean(spore_counts, na.rm = TRUE),
             var_spore_counts = var(spore_counts, na.rm = TRUE),
+            cond_mean_spore_counts = mean(conditional_spore, na.rm = TRUE),
             n_zeros = sum(spore_counts == 0, na.rm = TRUE),
             n_na = sum(is.na(spore_counts)),
             n_infected = sum(infected == 1, na.rm = TRUE),
             n_animals = n())
 zero_summary %>% knitr::kable(digits = 2)
+
+# 5 daphnia have just 1 spore counted, including the only daphnia that was infected in Age 6 Day trt.
+reg_data %>%
+  filter(spore_counts == 1)
+  
 ```
 
 There are a good deal of zeros. The variance is much bigger than the mean in many treatment combinations. Zero-inflated negative binomial makes sense here.
@@ -429,7 +436,13 @@ ggplot() +
              size = 4, shape = 3) +
   geom_point(data = filter(zero_summary, Time_treatment == "Night"), 
              aes(x = Age + 0.1, y = mean_spore_counts, col = Time_treatment), 
-             size = 4, shape = 3) 
+             size = 4, shape = 3) +
+      geom_point(data = filter(zero_summary, Time_treatment == "Day"), 
+             aes(x = Age - 0.1, y = cond_mean_spore_counts, col = Time_treatment), 
+             size = 4, shape = 2) +
+  geom_point(data = filter(zero_summary, Time_treatment == "Night"), 
+             aes(x = Age + 0.1, y = cond_mean_spore_counts, col = Time_treatment), 
+             size = 4, shape = 2) 
 ```
 
 There appears to be an age effect in spore counts. Individuals that were infected at age 9 have a greater mean spore count than individuals infected at day 6 (all Daphnia were followed up for 12 days post-exposure, i.e., for age 6 individuals their spores were counted at age 18 and age 9 daphnia were counted at age 21). This might be caused by size differences between different aged individuals since maybe daphnia that are bigger over the course of the 12 days that spores could develop would provide more energy for spore production. We could try to account for this using body size (length or length^3^ (since feeding seems to correlate with surface area)) at time of exposure as a baseline (The reg_data set already has this measurement).
@@ -449,10 +462,17 @@ ggplot() +
               aes(x = Age + 0.1, y = clog(spore_counts), col = Time_treatment), height = 0, width = 0.1)  +
     geom_point(data = filter(zero_summary, Time_treatment == "Day"), 
              aes(x = Age - 0.1, y = clog(mean_spore_counts), col = Time_treatment), 
-             size = 4, shape = 3) +
+             size = 4, shape = 22) +
   geom_point(data = filter(zero_summary, Time_treatment == "Night"), 
              aes(x = Age + 0.1, y = clog(mean_spore_counts), col = Time_treatment), 
-             size = 4, shape = 3) 
+             size = 4, shape = 22) +
+      geom_point(data = filter(zero_summary, Time_treatment == "Day"), 
+             aes(x = Age - 0.1, y = clog(cond_mean_spore_counts), col = Time_treatment), 
+             size = 4, shape = 24) +
+  geom_point(data = filter(zero_summary, Time_treatment == "Night"), 
+             aes(x = Age + 0.1, y = clog(cond_mean_spore_counts), col = Time_treatment), 
+             size = 4, shape = 24) 
+
 
 #plot(clog(spore_counts) ~ factor(interaction(Time_treatment, factor(Age))), data = reg_data)
 ```
@@ -479,7 +499,8 @@ Hmm, maybe length at exposure isn't that informative?
 It's not clear to me how to evaluate the fit of the these models. Need to figure out. DHARMa?
 
 ```{r}
-library(pscl)
+#library(pscl)
+library(countreg)
 library(lmtest)
 
 model_formulas <- 
@@ -559,6 +580,14 @@ zero_summary %>% knitr::kable(digits = 2)
 zero_summary$response <- predict(zi_nb_lin_age_both_main, newdata = zero_summary, type = "response")
 zero_summary$count <- predict(zi_nb_lin_age_both_main, newdata = zero_summary, type = "count")
 zero_summary$prob_zero <- predict(zi_nb_lin_age_both_main, newdata = zero_summary, type = "zero")
+
+zero_summary %>% knitr::kable(digits = 2)
+```
+
+```{r}
+zero_summary$response <- predict(mod_list[[2]], newdata = zero_summary, type = "response")
+zero_summary$count <- predict(mod_list[[2]], newdata = zero_summary, type = "count")
+zero_summary$prob_zero <- predict(mod_list[[2]], newdata = zero_summary, type = "zero")
 
 zero_summary %>% knitr::kable(digits = 2)
 ```
