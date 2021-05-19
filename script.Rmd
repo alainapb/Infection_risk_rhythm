@@ -400,6 +400,27 @@ inf_OR_unadjusted
 confint(inf_main, level = 0.95)
 ```
 
+What if we looked at the random effect of age instead of fixed linear effect? It may be the case that the increase is infection probability is driven by the age 6 day group which has only one infected daphnia. There may be a random effect of age since we see a similar up-down pattern across ages for each time treatment.
+
+```{r}
+library(lme4)
+
+# fit binomial model with random intercept by age grouping
+# bernoulli model
+inf_rand_age <- glmer(infected ~ Time_treatment + (1 | Age), family = binomial(), data = reg_data)
+# binomial
+prev_rand_age <- glmer(inf/n ~ Time_treatment + (1 | Age), family = binomial(), data = prev, weights = n)
+# fit binomial glm with to compare with binomial mixed model
+prev_main <- glm(inf/n ~ Time_treatment + Age, family = binomial(), data = prev, weights = n)
+# random effect estimates are similar between bernoulli and binomial specification
+summary(inf_rand_age)
+summary(prev_rand_age)
+
+# compare AIC
+AIC(inf_main, inf_rand_age)
+AIC(prev_main, prev_rand_age)
+```
+
 
 # spore intensity
 
@@ -492,7 +513,19 @@ reg_data %>%
 cor.test(reg_data$Age, reg_data$Length_at_exposure_mm)
 ```
 
-Hmm, maybe length at exposure isn't that informative?
+
+```{r}
+reg_data %>%
+  ggplot() +
+  geom_point(aes(x = Length_at_exposure_mm, y = clog(spore_counts)))
+
+reg_data %>%
+  ggplot() +
+  geom_point(aes(x = Length_at_exposure_mm^3, y = clog(spore_counts)))
+
+```
+
+Hmm, maybe length at exposure isn't that informative? Ignoring the zero counts, it appear that log(spore counts) doesn't vary with length of volume of daphnia at exposure.
 
 ### zero-inflated and hurdle models
 
@@ -503,6 +536,10 @@ It's not clear to me how to evaluate the fit of the these models. Need to figure
 library(countreg)
 library(lmtest)
 
+```
+
+```{r eval = FALSE}
+# specify a mess of models
 model_formulas <- 
   c(spore_counts ~ 1 | 1,
     spore_counts ~ 1 | Age + Time_treatment,
@@ -524,70 +561,123 @@ mod_list <- lapply(seq_along(model_formulas), function(x) hurdle(model_formulas[
 
 # print AIC
 map_dbl(mod_list, AIC)
-```
 
-```{r}
-lrtest(mod_list[[2]], mod_list[[3]])
-lrtest(mod_list[[3]], mod_list[[4]])
-```
-
-```{r}
-# take closer look at model 7 which I think is reasonable based on EDA
-summary(mod_list[[7]])
+lrtest(mod_list[[2]], mod_list[[3]]) # test significant of Age in zero hurdle part
+lrtest(mod_list[[3]], mod_list[[4]]) # test significance of Time_treatment in count part
 ```
 
 
 ```{r}
+# ZI models 
 # negative binomial
-zi_nb_lin_age_int <- zeroinfl(spore_counts ~ Age * Time_treatment | as.factor(Age) + Time_treatment,
+zi_nb_null <- zeroinfl(spore_counts ~ 1 | Age + Time_treatment,
        dist = "negbin", link = "logit", data = reg_data)
-zi_nb_lin_age_main <- zeroinfl(spore_counts ~ Age + Time_treatment | as.factor(Age) + Time_treatment,
+zi_nb_time <- zeroinfl(spore_counts ~ Time_treatment | Age + Time_treatment,
        dist = "negbin", link = "logit", data = reg_data)
+zi_nb_age_time <- zeroinfl(spore_counts ~ Age + Time_treatment | Age + Time_treatment,
+       dist = "negbin", link = "logit", data = reg_data)
+zi_nb_age_time_int <- zeroinfl(spore_counts ~ Age * Time_treatment | Age + Time_treatment,
+       dist = "negbin", link = "logit", data = reg_data)
+# poisson
+zi_poi_null <- zeroinfl(spore_counts ~ 1 | Age + Time_treatment,
+       dist = "poisson", link = "logit", data = reg_data)
+zi_poi_time <- zeroinfl(spore_counts ~ Time_treatment | Age + Time_treatment,
+       dist = "poisson", link = "logit", data = reg_data)
+zi_poi_age_time <- zeroinfl(spore_counts ~ Age + Time_treatment | Age + Time_treatment,
+       dist = "poisson", link = "logit", data = reg_data)
+zi_poi_age_time_int <- zeroinfl(spore_counts ~ Age * Time_treatment | Age + Time_treatment,
+       dist = "poisson", link = "logit", data = reg_data)
 
-zi_nb_lin_age_both_int <- zeroinfl(spore_counts ~ Age * Time_treatment | Age + Time_treatment,
+# Hurdle models
+# negative binomial
+hurd_nb_null <- hurdle(spore_counts ~ 1 | Age + Time_treatment,
        dist = "negbin", link = "logit", data = reg_data)
-zi_nb_lin_age_both_main <- zeroinfl(spore_counts ~ Age + Time_treatment | Age + Time_treatment,
+hurd_nb_time <- hurdle(spore_counts ~ Time_treatment | Age + Time_treatment,
        dist = "negbin", link = "logit", data = reg_data)
+hurd_nb_age_time <- hurdle(spore_counts ~ Age + Time_treatment | Age + Time_treatment,
+       dist = "negbin", link = "logit", data = reg_data)
+hurd_nb_age_time_int <- hurdle(spore_counts ~ Age * Time_treatment | Age + Time_treatment,
+       dist = "negbin", link = "logit", data = reg_data)
+# poisson
+hurd_poi_null <- hurdle(spore_counts ~ 1 | Age + Time_treatment,
+       dist = "poisson", link = "logit", data = reg_data)
+hurd_poi_time <- hurdle(spore_counts ~ Time_treatment | Age + Time_treatment,
+       dist = "poisson", link = "logit", data = reg_data)
+hurd_poi_age_time <- hurdle(spore_counts ~ Age + Time_treatment | Age + Time_treatment,
+       dist = "poisson", link = "logit", data = reg_data)
+hurd_poi_age_time_int <- hurdle(spore_counts ~ Age * Time_treatment | Age + Time_treatment,
+       dist = "poisson", link = "logit", data = reg_data)
 
-# AIC(zi_poisson_full,hurdle_poisson_main,zi_poisson_main,
-#     zi_nb_full,hurdle_nb_main,zi_nb_main) %>%
-AIC(zi_nb_lin_age_int,
-    zi_nb_lin_age_main,
-    zi_nb_lin_age_both_int,
-    zi_nb_lin_age_both_main) %>%
-
-  mutate(deltaAIC = AIC - min(AIC))
+bbmle::AICtab(zi_nb_null,
+              zi_nb_time,
+              zi_nb_age_time,
+              zi_nb_age_time_int,
+              zi_poi_null,
+              zi_poi_time,
+              zi_poi_age_time,
+              zi_poi_age_time_int,
+              hurd_nb_null,
+              hurd_nb_time,
+              hurd_nb_age_time,
+              hurd_nb_age_time_int,
+              hurd_poi_null,
+              hurd_poi_time,
+              hurd_poi_age_time,
+              hurd_poi_age_time_int)
 ```
 
-Top 3 models all have (truncated) negative binomial count response. Zero-inflated and hurdle model about the same for main effects in count part and full interaction model for counts is also in the top.
+Doesn't seem to be a difference between hurdle and zero-inflated models. The negative binomial is much better at modeling the counts than the poisson. There do not appear to be any differences in the expected count among treatments after accounting for differences in infection probability.
 
 ```{r}
-# summary(zi_nb_full)
-# summary(zi_nb_main)
-# summary(hurdle_nb_main)
-summary(zi_nb_lin_age_main)
+# zi negbin null model conditional count predictions
+nd <- zero_summary %>% dplyr::select(Age, Time_treatment)
+summary(zi_nb_null)
+nd$count_null <- predict(zi_nb_null, newdata = nd, type = "count")
+zi_nb_null_CI <- confint(zi_nb_null) %>% as_tibble()
+
+nd$count_null_lwr <- zi_nb_null_CI[1,1] %>% pull() %>% exp()
+nd$count_null_upr <- zi_nb_null_CI[1,2] %>% pull() %>% exp()
+
+# plot the conditional observed count, mean count, and predicted count + CI
+ggplot() + 
+  geom_point(data = zero_summary, 
+             aes(x = Age, y = cond_mean_spore_counts, col = Time_treatment, size = n_infected), 
+             alpha = 0.5) +
+  geom_jitter(data = filter(reg_data, infected == 1), 
+              aes(x = Age, y = spore_counts, col = Time_treatment), 
+              shape = 3, height = 0, width = 0.1) +
+  geom_line(data = nd, 
+            aes(x = Age, y = count_null)) +
+  geom_ribbon(data = nd, 
+              aes(x = Age, ymin = count_null_lwr, ymax = count_null_upr), 
+              alpha = 0.2) +
+  theme_bw()
+
+# zi negbin null model response prediction
+nd$response_null <- predict(zi_nb_null, newdata = nd, type = "response")
+
+# need to figure out how to compute CI for this
+
+# plot mean spore count conditional on infection probability
+ggplot() + 
+  geom_point(data = zero_summary, 
+             aes(x = Age, y = mean_spore_counts, col = Time_treatment, size = n_infected), 
+             alpha = 0.5) +
+  geom_jitter(data = reg_data, 
+              aes(x = Age, y = spore_counts, col = Time_treatment), 
+              shape = 3, height = 0, width = 0.1) +
+  geom_line(data = nd, 
+            aes(x = Age, y = response_null, col = Time_treatment)) +
+  theme_bw()
+
+
 ```
 
-```{r}
-zero_summary$response <- predict(zi_nb_lin_age_main, newdata = zero_summary, type = "response")
-zero_summary$count <- predict(zi_nb_lin_age_main, newdata = zero_summary, type = "count")
-zero_summary$prob_zero <- predict(zi_nb_lin_age_main, newdata = zero_summary, type = "zero")
-
-zero_summary %>% knitr::kable(digits = 2)
-```
 
 ```{r}
-zero_summary$response <- predict(zi_nb_lin_age_both_main, newdata = zero_summary, type = "response")
-zero_summary$count <- predict(zi_nb_lin_age_both_main, newdata = zero_summary, type = "count")
-zero_summary$prob_zero <- predict(zi_nb_lin_age_both_main, newdata = zero_summary, type = "zero")
-
-zero_summary %>% knitr::kable(digits = 2)
-```
-
-```{r}
-zero_summary$response <- predict(mod_list[[2]], newdata = zero_summary, type = "response")
-zero_summary$count <- predict(mod_list[[2]], newdata = zero_summary, type = "count")
-zero_summary$prob_zero <- predict(mod_list[[2]], newdata = zero_summary, type = "zero")
+zero_summary$response <- predict(zi_nb_null, newdata = zero_summary, type = "response")
+zero_summary$count <- predict(zi_nb_null, newdata = zero_summary, type = "count")
+zero_summary$prob_zero <- predict(zi_nb_null, newdata = zero_summary, type = "zero")
 
 zero_summary %>% knitr::kable(digits = 2)
 ```
