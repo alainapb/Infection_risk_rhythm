@@ -232,6 +232,50 @@ newdata %>%
   geom_point(po, mapping=aes(x=Age, y=Corrected_Change, color=Phase), alpha = 0.5)
 ```
 
+```{r}
+hist(po$Corrected_Change)
+
+# po is strictly? positive
+# no zeros
+po_summary <- po %>%
+  group_by(Age) %>%
+  mutate(age_mean_po = mean(Corrected_Change, na.rm = TRUE)) %>%
+  group_by(Time_treatment, Age) %>%
+  summarise(mean_po = mean(Corrected_Change, na.rm = TRUE),
+            min_po = min(Corrected_Change, na.rm = TRUE),
+            max_po = max(Corrected_Change, na.rm = TRUE),
+            age_mean_po = unique(age_mean_po))
+po_summary
+
+```
+
+```{r}
+# linear model using log(Corrected_Change) as response
+fit.log.po <- lm(log(Corrected_Change) ~ Age * Time_treatment, data = po)
+summary(fit.log.po)
+plot(fit.log.po)
+
+# plot predictions
+nd <- expand.grid(Time_treatment=c("Dark", "Light"), Age = seq(6, 9, length.out = 100))
+po_pred <- predict(fit.log.po, newdata = nd, interval = "confidence") %>%
+  as_tibble() %>%
+  mutate(fit_median = exp(fit),
+         lwr_median = exp(lwr),
+         upr_median = exp(upr)) %>%
+  cbind(nd)
+
+po_pred %>%
+ggplot() +
+  geom_line(aes(x = Age, y = fit_median, col = Time_treatment)) +
+  geom_ribbon(aes(x = Age, ymin = lwr_median, ymax = upr_median, fill = Time_treatment), alpha = 0.3) +
+  geom_point(data = po_summary, mapping = aes(x = Age, y = mean_po, col = Time_treatment)) +
+  geom_point(data = po_summary, mapping = aes(x = Age, y = age_mean_po))
+  #geom_jitter(data = po, mapping = aes(x = Age, y = Corrected_Change, col = Time_treatment), width = 0.1, height = 0)
+
+glm(Corrected_Change ~ Age * Time_treatment, family = gaussian(link = "log"), data = po)
+```
+
+
 # infection
 
 
