@@ -346,7 +346,7 @@ inf_preds %>% select(Age, Time_treatment, inf, n, prev, fit, lwr, upr) %>%
 ```
 
 
-```{r}
+```{r eval = FALSE}
 library(mcprofile)
 K <- matrix(c(1, 6, 0,
               1, 6, 1,
@@ -383,7 +383,7 @@ inf_lr_CI %>% knitr::kable(digits = 2)
 
 We are 95% confident that the odds of infection when Daphnia are exposed at night is 1.31 to 2.76 times as large when exposed at day when age of exposure is held constant. We are 95% confident that the odds of infection 
 
-```{r}
+```{r eval = FALSE}
 inf_lr_CI %>%
   ggplot() +
   geom_line(aes(x = Age, y = prob, col = Time_treatment)) +
@@ -391,7 +391,7 @@ inf_lr_CI %>%
   geom_point(aes(x = Age, y = prev, col = Time_treatment)) +
   facet_wrap(~adjust)
 ```
-```{r}
+```{r eval = FALSE}
 K <- matrix(c(0, 1, 0,
               0, 0, 1), 
             byrow = TRUE, nrow = 2, ncol = 3)
@@ -620,24 +620,24 @@ zi_poi_age_time_int <- zeroinfl(spore_counts ~ Age * Time_treatment | Age + Time
        dist = "poisson", link = "logit", data = reg_data)
 
 # Hurdle models
-# negative binomial
-hurd_nb_null <- hurdle(spore_counts ~ 1 | Age + Time_treatment,
-       dist = "negbin", link = "logit", data = reg_data)
-hurd_nb_time <- hurdle(spore_counts ~ Time_treatment | Age + Time_treatment,
-       dist = "negbin", link = "logit", data = reg_data)
-hurd_nb_age_time <- hurdle(spore_counts ~ Age + Time_treatment | Age + Time_treatment,
-       dist = "negbin", link = "logit", data = reg_data)
-hurd_nb_age_time_int <- hurdle(spore_counts ~ Age * Time_treatment | Age + Time_treatment,
-       dist = "negbin", link = "logit", data = reg_data)
-# poisson
-hurd_poi_null <- hurdle(spore_counts ~ 1 | Age + Time_treatment,
-       dist = "poisson", link = "logit", data = reg_data)
-hurd_poi_time <- hurdle(spore_counts ~ Time_treatment | Age + Time_treatment,
-       dist = "poisson", link = "logit", data = reg_data)
-hurd_poi_age_time <- hurdle(spore_counts ~ Age + Time_treatment | Age + Time_treatment,
-       dist = "poisson", link = "logit", data = reg_data)
-hurd_poi_age_time_int <- hurdle(spore_counts ~ Age * Time_treatment | Age + Time_treatment,
-       dist = "poisson", link = "logit", data = reg_data)
+# # negative binomial
+# hurd_nb_null <- hurdle(spore_counts ~ 1 | Age + Time_treatment,
+#        dist = "negbin", link = "logit", data = reg_data)
+# hurd_nb_time <- hurdle(spore_counts ~ Time_treatment | Age + Time_treatment,
+#        dist = "negbin", link = "logit", data = reg_data)
+# hurd_nb_age_time <- hurdle(spore_counts ~ Age + Time_treatment | Age + Time_treatment,
+#        dist = "negbin", link = "logit", data = reg_data)
+# hurd_nb_age_time_int <- hurdle(spore_counts ~ Age * Time_treatment | Age + Time_treatment,
+#        dist = "negbin", link = "logit", data = reg_data)
+# # poisson
+# hurd_poi_null <- hurdle(spore_counts ~ 1 | Age + Time_treatment,
+#        dist = "poisson", link = "logit", data = reg_data)
+# hurd_poi_time <- hurdle(spore_counts ~ Time_treatment | Age + Time_treatment,
+#        dist = "poisson", link = "logit", data = reg_data)
+# hurd_poi_age_time <- hurdle(spore_counts ~ Age + Time_treatment | Age + Time_treatment,
+#        dist = "poisson", link = "logit", data = reg_data)
+# hurd_poi_age_time_int <- hurdle(spore_counts ~ Age * Time_treatment | Age + Time_treatment,
+#        dist = "poisson", link = "logit", data = reg_data)
 
 bbmle::AICtab(zi_nb_null,
               zi_nb_time,
@@ -647,20 +647,39 @@ bbmle::AICtab(zi_nb_null,
               zi_poi_time,
               zi_poi_age_time,
               zi_poi_age_time_int,
-              hurd_nb_null,
-              hurd_nb_time,
-              hurd_nb_age_time,
-              hurd_nb_age_time_int,
-              hurd_poi_null,
-              hurd_poi_time,
-              hurd_poi_age_time,
-              hurd_poi_age_time_int) %>%
+              # hurd_nb_null,
+              # hurd_nb_time,
+              # hurd_nb_age_time,
+              # hurd_nb_age_time_int,
+              # hurd_poi_null,
+              # hurd_poi_time,
+              # hurd_poi_age_time,
+              # hurd_poi_age_time_int
+              logLik = TRUE, base = TRUE) %>%
   data.frame() %>%
-  #write.csv("aic_spore_count.csv")
+  dplyr::select(-dLogLik) %>%
+  # write.csv("aic_spore_count.csv")
   knitr::kable(digits = 2)
 ```
 
-Doesn't seem to be a difference between hurdle and zero-inflated models. The negative binomial is much better at modeling the counts than the poisson. There do not appear to be any differences in the expected count among treatments after accounting for differences in infection probability.
+So, we can see from AIC comparison that the negative binomial is better than poisson.
+
+Let's look at likelihood ratio tests for model selection.
+```{r}
+# using function from lmtest
+lrtest(zi_nb_null, zi_nb_time)
+lrtest(zi_nb_time, zi_nb_age_time)
+lrtest(zi_nb_age_time, zi_nb_age_time_int)
+```
+
+
+```{r}
+# is this correct?
+# output agrees with previous code chunk
+car::Anova(zi_nb_age_time_int, test = "Chisq")
+```
+
+Both the pair-wise lrtest and the car::Anova test provide the same qualitative conclusions. None of the terms are statistically significant, i.e., the the probability that we would observe the improvement in model fit (likelihood) that is obtained by adding explanatory variables when those explanatory variables don't matter is large. There do not appear to be any differences in the expected count among treatments after accounting for differences in infection probability.
 
 ```{r}
 library(emmeans)
