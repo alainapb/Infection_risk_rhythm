@@ -220,6 +220,9 @@ all.data %>%
 summary(po_model<-glm(Corrected_Change ~ Phase*as.factor(Age), data=po))
 plot(po_model)
 
+summary(lm(Corrected_Change ~ as.factor(Age), data = po))
+plot(lm(Corrected_Change ~ Age, data = po))
+
 newdata<-expand.grid(Phase=c("Active", "Resting"), Age = 6:9)
 newdata$preds<-predict(po_model, newdata=newdata)
 
