@@ -223,7 +223,7 @@ all.data %>%
 summary(po_model<-glm(Corrected_Change ~ Phase*as.factor(Age), data=po))
 plot(po_model)
 
-summary(lm(Corrected_Change ~ as.factor(Age), data = po))
+summary(lm(Corrected_Change ~ as.factor(Age) -1, data = po))
 plot(lm(Corrected_Change ~ Age, data = po))
 
 newdata<-expand.grid(Phase=c("Active", "Resting"), Age = 6:9)
