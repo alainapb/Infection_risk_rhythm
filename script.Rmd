@@ -371,13 +371,19 @@ inf_preds %>%
   scale_color_manual(values=c("#ffcc33", "#0033cc"))+
   scale_fill_manual(values=c("#ffcc33", "#0033cc"))+
   ylim(0,1) +
-  labs(y = "infection probability",
-       x = "Age at exposure (days)",
+  labs(y = "Infection Probability",
+       x = "Age at Exposure (days)",
        col = "Exposure\ntime",
        shape = "Exposure\ntime",
        linetype = "Exposure\ntime",
        fill = "Exposure\ntime") +
-  theme_bw()
+  theme_bw()+
+  theme(axis.title.y = element_text(size = 12, color ="black"), 
+        axis.title.x = element_text(size = 12, color ="black"), 
+        axis.text = element_text(size = 8, color="black"), 
+        legend.text = element_text(size=10, color = "black"))
+
+ggsave("figure3.pdf", width = 5, height = 4)
 ```
 
 Comparison of model predicted probability of infection plus 95% Wald CI and the observed prevalence. It is clear that the probability of infection is greater during the night than the day. There is some evidence that the probability of infection increases with the age of exposure.
@@ -959,9 +965,9 @@ ggplot() +
   geom_ribbon(data = nd, 
               aes(x = Age, ymin = count_null_lwr, ymax = count_null_upr), 
               alpha = 0.2) +
-    labs(y = "Spore counts when infected", x = "Age at exposure (days)",
+    labs(y = "Spore Counts when Infected", x = "Age at Exposure (days)",
        col = "Exposure\ntime",
-       size = "# infected") +
+       size = "No. Infected") +
   scale_color_manual(values=c("#ffcc33", "#0033cc"))+
   scale_fill_manual(values=c("#ffcc33", "#0033cc"))+
   theme_bw()
@@ -981,12 +987,16 @@ ggplot() +
               shape = 3, height = 0, width = 0.1) +
   geom_line(data = nd, 
             aes(x = Age, y = response_null, col = Time_treatment)) +
-  labs(y = "Spore counts", x = "Age at exposure (days)",
+  labs(y = "Spore Counts", x = "Age at Exposure (days)",
        col = "Exposure\ntime",
-       size = "# infected") +
+       size = "No. Infected") +
   scale_color_manual(values=c("#ffcc33", "#0033cc"))+
   scale_fill_manual(values=c("#ffcc33", "#0033cc"))+
-  theme_bw() 
+  theme_bw()+
+  theme(axis.title.y = element_text(size = 12, color ="black"), 
+        axis.title.x = element_text(size = 12, color ="black"), 
+        axis.text = element_text(size = 8, color="black"), 
+        legend.text = element_text(size=10, color = "black"))
 
 
 ```
