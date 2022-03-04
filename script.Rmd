@@ -1136,7 +1136,7 @@ predict(zi_nb_all, newdata = expand.grid(Time_treatment = c("Day", "Night"), Age
 
 # zi_nb_age_time
 emm_response_all <- emmeans(zi_nb_all, specs = c("Time_treatment", "Age"), by = "fr_sw", mode = "response") # arithmatic mean
-emm_count_all <- emmeans(zi_nb_all, specs = c("Time_treatment", "Age"), by = "fr_sw", mode = "count")
+emm_count_all <- emmeans(zi_nb_all, specs = "Time_treatment", by = c("Age", "fr_sw"), mode = "count")
 ```
 
 ```{r}
@@ -1153,9 +1153,15 @@ emm_count_all <- emmeans(zi_nb_all, specs = c("Time_treatment", "Age"), by = "fr
 
 contrast(emm_response_all, spec = "pairwise", by = c("Age", "fr_sw"))
 
+contrast(emm_count_all, spec = "pairwise", by = c("Age", "fr_sw"))
+
 emmip(emm_response_all,~ fr_sw | Time_treatment, CIs = TRUE) +
     geom_point(aes(x = fr_sw, y = spore_counts), data = reg_data, pch = 2, color = "blue")
+
+emmip(emm_count_all,~ fr_sw | Time_treatment, CIs = TRUE) +
+    geom_point(aes(x = fr_sw, y = spore_counts), data = reg_data, pch = 2, color = "blue")
 ```
+
 
 
 ```{r}
