@@ -824,7 +824,7 @@ lrtest(zi_nb_age_time, zi_nb_age_fr)
 lrtest(zi_nb_age_time, zi_nb_age_time_int)
 
 lrtest(zi_nb_null, zi_nb_all)
-lrtest(zi_nb_time, zi_nb_all) # * 0.05
+lrtest(zi_nb_time, zi_nb_all) # *0.05
 lrtest(zi_nb_age_time, zi_nb_all) # * 0.04
 ```
 
@@ -1123,3 +1123,48 @@ zero_summary %>%
   summarise("night - day" = mean(`night - day`, na.rm = T))
 ``` 
 
+
+
+###### trying stuff ######
+``` {r}
+library(emmeans)
+
+predict(zi_nb_all, newdata = expand.grid(Time_treatment = c("Day", "Night"), Age = 6:9, fr_sw = seq(-0.5, 0.8, .2)), type = "response")
+#predict(zi_nb_time, newdata = expand.grid(Time_treatment = c("Day", "Night"), Age = 6:9), type = "count")
+#predict(zi_nb_time, newdata = expand.grid(Time_treatment = c("Day", "Night"), Age = 6:9), type = "zero")
+
+
+# zi_nb_age_time
+emm_response_all <- emmeans(zi_nb_all, specs = c("Time_treatment", "Age"), by = "fr_sw", mode = "response") # arithmatic mean
+emm_count_all <- emmeans(zi_nb_all, specs = c("Time_treatment", "Age"), by = "fr_sw", mode = "count")
+```
+
+```{r}
+# get CI for plotting response
+#model_mat <- model.matrix(zi_nb_all) %>% unique()
+#rownames(model_mat) <- c("age6_day", "age6_night",
+#                      "age7_day", "age7_night",
+#                      "age8_day", "age8_night",
+#                      "age9_day", "age9_night")
+#model_mat
+
+#contr_list <- lapply(1:nrow(model_mat), function(x) model_mat[x,])
+#names(contr_list) <- rownames(model_mat)
+
+contrast(emm_response_all, spec = "pairwise", by = c("Age", "fr_sw"))
+
+emmip(emm_response_all,~ fr_sw | Time_treatment, CIs = TRUE) +
+    geom_point(aes(x = fr_sw, y = spore_counts), data = reg_data, pch = 2, color = "blue")
+```
+
+
+```{r}
+
+summary(contrast(emm_response_all, "revpairwise"))
+confint(contrast(emm_response_all, "revpairwise")) # night - day for response
+
+# count
+cont_count_all <- contrast(emm_count_all, "revpairwise") # night - day for count
+summary(cont_count_all)
+confint(cont_count_all)
+```
