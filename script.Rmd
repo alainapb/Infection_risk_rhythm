@@ -137,10 +137,11 @@ average_size$size<-(average_size$length)^3
 
 no_size<-po_correct %>%
   ggplot() +
-  geom_point(aes(x = time, y = PO, group = sample)) +
-  geom_smooth(aes(x = time, y = PO), method = "lm", color ="orange", alpha = 0) +
+  geom_point(aes(x = time, y = log(PO), group = sample)) +
+  geom_smooth(aes(x = time, y = log(PO)), method = "lm", color ="orange", alpha = 0.5) +
   labs(y="Active PO", x="Age (days)")+
-  scale_x_continuous(breaks = c(24,48,72,96), labels = c(6,7, 8,9))+
+  facet_grid(~Age, scales = "free_x")+
+  #scale_x_continuous(breaks = c(24,48,72,96), labels = c(6,7, 8,9))+
   theme_bw()+
   theme(axis.text.x = element_text(size=8, color="black"),
         axis.text.y = element_text(size=8, color="black"),
@@ -172,9 +173,10 @@ po_correct$size_cor<-unlist(unname(size_cor))
 
 with_size<-po_correct %>%
   ggplot() +
-  geom_point(aes(x = time, y = size_cor, group = sample)) +
-  geom_smooth(aes(x = time, y = size_cor), method = "lm", color ="orange", alpha = 0) +
+  geom_point(aes(x = time, y = log(size_cor), group = sample)) +
+  geom_smooth(aes(x = time, y = log(size_cor)), method = "lm", color ="orange", alpha = .5) +
   labs(y="Active PO", x="Age (days)")+
+  facet_grid(~Age, scales = "free_x")+
   scale_x_continuous(breaks = c(24,48,72,96), labels = c(6,7, 8,9))+
   theme_bw()+
   theme(axis.text.x = element_text(size=8, color="black"),
@@ -314,7 +316,7 @@ po_summary
 
 ```{r}
 # linear model using log(Corrected_Change) as response
-fit.log.po <- lm(log(PO) ~ Age * Time_treatment, data = po_correct)
+fit.log.po <- lm(log(PO) ~ Age + Time_treatment, data = po_correct)
 summary(fit.log.po)
 plot(fit.log.po)
 
@@ -387,6 +389,8 @@ inf_fr <- glm(infected ~ Age + fr_sw + Time_treatment, family = binomial, data =
 inf_full_lin <- glm(infected ~ Age * Time_treatment, family = binomial, data = reg_data)
 # model 5: full interaction model with age as categorical
 inf_full_cat <- glm(infected ~ factor(Age) * Time_treatment, family = binomial , data = reg_data)
+#model6
+inf_full <- glm(infected ~ Age * fr_sw * Time_treatment, family = binomial, data = reg_data)
 
 # 
 summary(inf_time)
@@ -394,6 +398,7 @@ summary(inf_main)
 summary(inf_fr)
 summary(inf_full_lin)
 summary(inf_full_cat)
+summary(inf_full)
 
 # residual plots
 plot(inf_time, 1)
@@ -419,6 +424,9 @@ car::Anova(inf_fr, test = "LR")
 # likelihood ratio test for significance of exposure time specific effect of age
 # Not significant
 car::Anova(inf_full_lin, test = "LR")
+
+#USE this
+car::Anova(inf_full, test = "LR")
 
 ```
 
