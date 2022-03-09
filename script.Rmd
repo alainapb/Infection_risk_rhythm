@@ -115,82 +115,6 @@ all.data %>%
   theme_bw()
 
 ```
-
-#look at size differences by age 12-14-2021
-```{r size_at_exposure_plots, include=FALSE}
-growth %>%
-  filter(days_post_exposure == 0) %>%
-  ggplot()+
-  geom_boxplot(mapping=aes(x=as.factor(Age), y=Length_at_exposure_mm))
-
-all.data %>%
-  group_by(Age) %>%
-  summarise(length = mean(Length_at_exposure_mm, na.rm=TRUE))-> average_size
-
-average_size$size<-(average_size$length)^3
-
-```
-
-
-
-```{r po_plots, echo=FALSE}
-
-no_size<-po_correct %>%
-  ggplot() +
-  geom_point(aes(x = time, y = log(PO), group = sample)) +
-  geom_smooth(aes(x = time, y = log(PO)), method = "lm", color ="orange", alpha = 0.5) +
-  labs(y="Active PO", x="Age (days)")+
-  facet_grid(~Age, scales = "free_x")+
-  #scale_x_continuous(breaks = c(24,48,72,96), labels = c(6,7, 8,9))+
-  theme_bw()+
-  theme(axis.text.x = element_text(size=8, color="black"),
-        axis.text.y = element_text(size=8, color="black"),
-        axis.title = element_text(size = 12, color="black"))
-
-ggsave("figure2.pdf", height =4, width =6)
-
-##Size corrected plots
-a<-as.vector(po_correct %>% 
-  filter(time < 27) %>% 
-  summarise(size_cor = PO/2.425660))
-
-b<-as.vector(po_correct %>% 
-  filter(time > 24, time <51) %>% 
-  summarise(size_cor = PO/2.564842))
-
-c<-as.vector(po_correct %>% 
-  filter(time > 48, time < 75) %>% 
-  summarise(size_cor = PO/2.761120))
-
-d<-as.vector(po_correct %>% 
-  filter(time > 72) %>% 
-  summarise(size_cor = PO/3.097012))
-
-size_cor<-unlist(c(a,b,c,d))
-unname(size_cor)
-po_correct$size_cor<-unlist(unname(size_cor))
-
-
-with_size<-po_correct %>%
-  ggplot() +
-  geom_point(aes(x = time, y = log(size_cor), group = sample)) +
-  geom_smooth(aes(x = time, y = log(size_cor)), method = "lm", color ="orange", alpha = .5) +
-  labs(y="Active PO", x="Age (days)")+
-  facet_grid(~Age, scales = "free_x")+
-  scale_x_continuous(breaks = c(24,48,72,96), labels = c(6,7, 8,9))+
-  theme_bw()+
-  theme(axis.text.x = element_text(size=8, color="black"),
-        axis.text.y = element_text(size=8, color="black"),
-        axis.title = element_text(size = 12, color="black"))
-
-no_size + with_size
-
-#### slope
-summary(lm(size_cor ~ time, po_correct))
-summary(lm(PO ~ time, po_correct))
-
-```
-
 ```{r growth_plots, echo=FALSE}
 growth %>%
   filter(Age == 6) %>%
@@ -272,32 +196,80 @@ all.data %>%
 
 ```
 
+#look at size differences by age 12-14-2021
+```{r size_at_exposure_plots, include=FALSE}
+growth %>%
+  filter(days_post_exposure == 0) %>%
+  ggplot()+
+  geom_boxplot(mapping=aes(x=as.factor(Age), y=Length_at_exposure_mm))
 
-#Stats
+all.data %>%
+  group_by(Age) %>%
+  summarise(length = mean(Length_at_exposure_mm, na.rm=TRUE))-> average_size
 
-# PO
-```{r po}
+average_size$size<-(average_size$length)^3
+
+```
+
+
+#PO
+```{r po_plots, echo=FALSE}
 po_correct$Age<-c(rep(6, 32), rep(7,32), rep(8,32), rep(9,32))
+po_correct$Hours<-rep(c(rep(3,4), rep(6,4), rep(9, 4), rep(12,4), rep(15,4), rep(18,4), rep(21,4), rep(24,4)),4)
 po_correct$Phase<-c(rep("Resting", 20), rep('Active', 12),rep("Resting", 20), rep('Active', 12), rep("Resting", 20), rep('Active', 12), rep("Resting", 20), rep("Active", 12))
 po_correct$Time_treatment<-c(rep("Light", 20), rep('Dark', 12),rep("Light", 20), rep('Dark', 12), rep("Light", 20), rep('Dark', 44))
 
-#Does PO differ across a day (Resting = Light hours, Active = dark hours) and across ages? 
-summary(po_model<-glm(PO ~ Phase*as.factor(Age), data=po_correct))
-plot(po_model)
+no_size<-po_correct %>%
+  ggplot() +
+  geom_point(aes(x = Hours, y = log(PO), group = sample)) +
+  geom_smooth(aes(x = Hours, y = log(PO)), method = "lm", color ="orange", alpha = 0.5) +
+  labs(y="Active PO", x="Age (days)")+
+  facet_grid(~Age)+
+  #scale_x_continuous(breaks = c(24,48,72,96), labels = c(6,7, 8,9))+
+  theme_bw()+
+  theme(axis.text.x = element_text(size=8, color="black"),
+        axis.text.y = element_text(size=8, color="black"),
+        axis.title = element_text(size = 12, color="black"))
 
-summary(lm(log(PO) ~ Age, data = po_correct))
-summary(lm(log(PO) ~ as.factor(Age)-1, data = po_correct))
+#ggsave("figure2.pdf", height =4, width =6)
 
-newdata<-expand.grid(Phase=c("Active", "Resting"), Age = 6:9)
-newdata$preds<-predict(po_model, newdata=newdata)
+##Size corrected plots
+a<-as.vector(po_correct %>% 
+  filter(time < 27) %>% 
+  summarise(size_cor = PO/2.425660))
 
-newdata %>%
-  ggplot()+
-  geom_line(aes(x=Age, y=preds, color=Phase))+
-  geom_point(po_correct, mapping=aes(x=Age, y=PO, color=Phase), alpha = 0.5)
-```
+b<-as.vector(po_correct %>% 
+  filter(time > 24, time <51) %>% 
+  summarise(size_cor = PO/2.564842))
 
-```{r}
+c<-as.vector(po_correct %>% 
+  filter(time > 48, time < 75) %>% 
+  summarise(size_cor = PO/2.761120))
+
+d<-as.vector(po_correct %>% 
+  filter(time > 72) %>% 
+  summarise(size_cor = PO/3.097012))
+
+size_cor<-unlist(c(a,b,c,d))
+unname(size_cor)
+po_correct$size_cor<-unlist(unname(size_cor))
+
+
+with_size<-po_correct %>%
+  ggplot() +
+  geom_point(aes(x = Hours, y = log(size_cor), group = sample)) +
+  geom_smooth(aes(x = Hours, y = log(size_cor)), method = "lm", color ="orange", alpha = .5) +
+  labs(y="Active PO", x="Age (days)")+
+  facet_grid(~Age)+
+  #scale_x_continuous(breaks = c(24,48,72,96), labels = c(6,7, 8,9))+
+  theme_bw()+
+  theme(axis.text.x = element_text(size=8, color="black"),
+        axis.text.y = element_text(size=8, color="black"),
+        axis.title = element_text(size = 12, color="black"))
+
+no_size + with_size
+
+####### PO STATS #########
 hist(po_correct$PO)
 
 # po is strictly? positive
@@ -312,50 +284,117 @@ po_summary <- po_correct %>%
             age_mean_po = unique(age_mean_po))
 po_summary
 
-```
-
-```{r}
 # linear model using log(Corrected_Change) as response
-fit.log.po <- lm(log(PO) ~ Age + Time_treatment, data = po_correct)
-summary(fit.log.po)
-plot(fit.log.po)
+summary(po_age<-glm(PO ~ Age + Time_treatment, family = gaussian(link = "log"), data = po_correct))
+with(summary(po_age), 1 - deviance/null.deviance) #Rsquared .23
+plot(po_age)
 
 # plot predictions
+crit <- 1.96
 nd <- expand.grid(Time_treatment=c("Dark", "Light"), Age = seq(6, 9, length.out = 100))
-po_pred <- predict(fit.log.po, newdata = nd, interval = "confidence") %>%
+po_pred <- predict(po_age, newdata = nd, se.fit = TRUE) %>%
   as_tibble() %>%
-  mutate(fit_median = exp(fit),
-         lwr_median = exp(lwr),
-         upr_median = exp(upr)) %>%
+  mutate(half = crit * se.fit,
+         lwr = fit - half,
+         upr = fit + half) %>%
   cbind(nd)
 
 po_pred %>%
 ggplot() +
-  geom_line(aes(x = Age, y = fit_median, col = Time_treatment)) +
-  geom_ribbon(aes(x = Age, ymin = lwr_median, ymax = upr_median, fill = Time_treatment), alpha = 0.3) +
-  geom_point(data = po_summary, mapping = aes(x = Age, y = mean_po, col = Time_treatment)) +
-  geom_point(data = po_summary, mapping = aes(x = Age, y = age_mean_po, col = Time_treatment), pch = 22)
-  #geom_jitter(data = po, mapping = aes(x = Age, y = Corrected_Change, col = Time_treatment), width = 0.1, height = 0)
-
-summary(glm(PO ~ Age * Time_treatment, family = gaussian(link = "log"), data = po_correct))
-
-```
-
-```{r}
-#model of PO by age 
-summary(po_age<-glm(PO ~ Age, family = gaussian(link = "log"), data = po_correct))
-with(summary(po_age), 1 - deviance/null.deviance) #Rsquared
+  geom_point(data = po_correct, mapping = aes(x = Age, y = PO, col = Time_treatment), alpha = .6) +
+  geom_point(data = po_summary, mapping = aes(x = Age, y =mean_po, col = Time_treatment), pch = 22, size =5)+
+  geom_line(aes(x = Age, y = exp(fit), col = Time_treatment)) +
+  geom_ribbon(aes(x = Age, ymin = exp(lwr), ymax = exp(upr), fill = Time_treatment), alpha = 0.3)+
+  scale_color_manual(values=c( "#0033cc", "#ffcc33"))+
+  scale_fill_manual(values=c("#0033cc", "#ffcc33"))+
+  theme_bw()
 
 
 #look at size corrected PO
-summary(po_sc_age<-glm(size_cor ~ Age, family = gaussian(link = "log"), data = po_correct))
-with(summary(po_sc_age), 1 - deviance/null.deviance) #rsquared
+summary(po_sc_age<-glm(size_cor ~ Age + Time_treatment, family = gaussian(link = "log"), data = po_correct))
+with(summary(po_sc_age), 1 - deviance/null.deviance) #rsquared .14
 ```
 
-# infection
+#PO plot
+```{r PO_plot_for_pub, echo = FALSE}
+po_correct %>%
+  ggplot()+
+  geom_point(aes(x=Hours, y = PO))+
+  geom_smooth(aes(x=Hours, y = PO), method = "lm")+
+  facet_grid(~Age)
+
+summary(po_plot<-glm(PO ~ Age + Hours, family = gaussian(link = "log"), data = po_correct))
+crit <- 1.96
+nd2 <- expand.grid(Hours=c(3,6,9,12,15,18,21,24), Age = seq(6, 9, length.out = 4))
+po_fig <- predict(po_plot, newdata = nd2, se.fit = TRUE) %>%
+  as_tibble() %>%
+  mutate(half = crit * se.fit,
+         lwr = fit - half,
+         upr = fit + half) %>%
+  cbind(nd2)
+
+po_fig %>%
+ggplot() +
+  geom_point(data = po_correct, mapping = aes(x = Hours, y = PO), alpha = .6) +
+  geom_line(aes(x = Hours, y = exp(fit)), color = "orange") +
+  geom_ribbon(aes(x = Hours, ymin = exp(lwr), ymax = exp(upr)), fill = "orange",alpha = 0.3)+
+  facet_grid(.~Age)+
+  scale_x_continuous(breaks = c(3,6,9,12,15,18,21,24))+
+  theme_bw()+
+  theme(legend.position = "bottom", 
+        text = element_text(size=12),
+        axis.title = element_text(face = "bold", size =12),
+        strip.background =element_rect(fill="transparent", color="black", size = 1),
+        strip.text = element_text(face = "bold",size=12, color="black"),
+        axis.text.y = element_text(color="black", size = 10),
+        axis.text.x = element_text(color="black", size = 10),
+        panel.background = element_rect(fill="transparent", color =NA),
+        #panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        plot.background = element_rect(fill="transparent", color = NA),
+        axis.ticks = element_line(size =.3, color = "black"),
+        panel.border = element_rect(fill="transparent", color="black", size = 1),
+        panel.spacing = unit(1, "lines"))
+
+summary(po_plot2<-glm(size_cor ~ Age + Hours, family = gaussian(link = "log"), data = po_correct))
+crit <- 1.96
+nd3 <- expand.grid(Hours=c(3,6,9,12,15,18,21,24), Age = seq(6, 9, length.out = 4))
+po_fig2 <- predict(po_plot2, newdata = nd3, se.fit = TRUE) %>%
+  as_tibble() %>%
+  mutate(half = crit * se.fit,
+         lwr = fit - half,
+         upr = fit + half) %>%
+  cbind(nd3)
+
+po_fig2 %>%
+ggplot() +
+  geom_point(data = po_correct, mapping = aes(x = Hours, y = size_cor), alpha = .6) +
+  geom_line(aes(x = Hours, y = exp(fit)), color = "orange") +
+  geom_ribbon(aes(x = Hours, ymin = exp(lwr), ymax = exp(upr)), fill = "orange",alpha = 0.3)+
+  facet_grid(.~Age)+
+  scale_x_continuous(breaks = c(3,6,9,12,15,18,21,24))+
+  theme_bw()+
+  theme(legend.position = "bottom", 
+        text = element_text(size=12),
+        axis.title = element_text(face = "bold", size =12),
+        strip.background =element_rect(fill="transparent", color="black", size = 1),
+        strip.text = element_text(face = "bold",size=12, color="black"),
+        axis.text.y = element_text(color="black", size = 10),
+        axis.text.x = element_text(color="black", size = 10),
+        panel.background = element_rect(fill="transparent", color =NA),
+        #panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        plot.background = element_rect(fill="transparent", color = NA),
+        axis.ticks = element_line(size =.3, color = "black"),
+        panel.border = element_rect(fill="transparent", color="black", size = 1),
+        panel.spacing = unit(1, "lines"))
+```
+```
 
 
+#Stats
 
+## infection
 ```{r infection_prevalence}
 prev <- all.data %>%
   filter(Exposed.Control == "Exposed", 
@@ -593,7 +632,7 @@ AIC(prev_main, prev_rand_age)
 ```
 
 
-# spore intensity
+##spore intensity
 
 ```{r}
 zero_summary <- 
@@ -1133,7 +1172,7 @@ zero_summary %>%
 
 
 
-###### trying stuff ######
+#trying stuff
 ``` {r}
 library(emmeans)
 
