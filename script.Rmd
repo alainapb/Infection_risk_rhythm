@@ -356,6 +356,8 @@ ggplot() +
         panel.border = element_rect(fill="transparent", color="black", size = 1),
         panel.spacing = unit(1, "lines"))
 
+ggsave("po_figure.png", bg = "transparent", height =5, width = 9)
+
 summary(po_plot2<-glm(size_cor ~ Age + Hours, family = gaussian(link = "log"), data = po_correct))
 crit <- 1.96
 nd3 <- expand.grid(Hours=c(3,6,9,12,15,18,21,24), Age = seq(6, 9, length.out = 4))
