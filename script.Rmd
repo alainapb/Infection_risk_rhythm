@@ -600,7 +600,7 @@ exp(CI_OR_age)
 exp(coef(inf_full)[3])
 
 #odds of infection at night
-exp(coef(inf_full)[4])  #.08% to 424,3388%
+exp(coef(inf_full)[4])  #246% increase (-99% to )
 exp(CI_OR_night)
 
 # transform to probability scale
@@ -725,8 +725,6 @@ Hmm, maybe length at exposure isn't that informative? Ignoring the zero counts, 
 
 ### zero-inflated and hurdle models
 
-It's not clear to me how to evaluate the fit of the these models. Need to figure out. DHARMa?
-
 ```{r}
 library(pscl)
 #library(countreg)
@@ -797,26 +795,6 @@ zi_poi_age_time <- zeroinfl(spore_counts ~ Age + Time_treatment | Age + Time_tre
 zi_poi_age_time_int <- zeroinfl(spore_counts ~ Age * Time_treatment | Age + Time_treatment,
        dist = "poisson", link = "logit", data = reg_data)
 
-# Hurdle models
-# # negative binomial
-# hurd_nb_null <- hurdle(spore_counts ~ 1 | Age + Time_treatment,
-#        dist = "negbin", link = "logit", data = reg_data)
-# hurd_nb_time <- hurdle(spore_counts ~ Time_treatment | Age + Time_treatment,
-#        dist = "negbin", link = "logit", data = reg_data)
-# hurd_nb_age_time <- hurdle(spore_counts ~ Age + Time_treatment | Age + Time_treatment,
-#        dist = "negbin", link = "logit", data = reg_data)
-# hurd_nb_age_time_int <- hurdle(spore_counts ~ Age * Time_treatment | Age + Time_treatment,
-#        dist = "negbin", link = "logit", data = reg_data)
-# # poisson
-# hurd_poi_null <- hurdle(spore_counts ~ 1 | Age + Time_treatment,
-#        dist = "poisson", link = "logit", data = reg_data)
-# hurd_poi_time <- hurdle(spore_counts ~ Time_treatment | Age + Time_treatment,
-#        dist = "poisson", link = "logit", data = reg_data)
-# hurd_poi_age_time <- hurdle(spore_counts ~ Age + Time_treatment | Age + Time_treatment,
-#        dist = "poisson", link = "logit", data = reg_data)
-# hurd_poi_age_time_int <- hurdle(spore_counts ~ Age * Time_treatment | Age + Time_treatment,
-#        dist = "poisson", link = "logit", data = reg_data)
-
 bbmle::AICtab(zi_nb_null,
               zi_nb_time,
               zi_nb_fr,
@@ -829,14 +807,6 @@ bbmle::AICtab(zi_nb_null,
               zi_poi_time,
               zi_poi_age_time,
               zi_poi_age_time_int,
-              # hurd_nb_null,
-              # hurd_nb_time,
-              # hurd_nb_age_time,
-              # hurd_nb_age_time_int,
-              # hurd_poi_null,
-              # hurd_poi_time,
-              # hurd_poi_age_time,
-              # hurd_poi_age_time_int
               logLik = TRUE, base = TRUE) %>%
   data.frame() %>%
   dplyr::select(-dLogLik) %>%
@@ -850,15 +820,9 @@ So, we can see from AIC comparison that the negative binomial is better than poi
 Let's look at likelihood ratio tests for model selection.
 ```{r}
 # using function from lmtest
-lrtest(zi_nb_null, zi_nb_time)
-lrtest(zi_nb_null, zi_nb_fr)
-lrtest(zi_nb_time, zi_nb_age_time)
-lrtest(zi_nb_age_time, zi_nb_age_fr)
-lrtest(zi_nb_age_time, zi_nb_age_time_int)
-
-lrtest(zi_nb_null, zi_nb_all)
-lrtest(zi_nb_time, zi_nb_all) # *0.05
-lrtest(zi_nb_age_time, zi_nb_all) # * 0.04
+lrtest(zi_nb_null, zi_nb_all) #0.062
+lrtest(zi_nb_time, zi_nb_all) # *0.052
+lrtest(zi_nb_age_time, zi_nb_all) # * 0.0375
 ```
 
 
@@ -870,7 +834,9 @@ car::Anova(zi_nb_age_time_int, test = "Chisq")
 car::Anova(zi_nb_all, test = "Chisq")
 ```
 
-Both the pair-wise lrtest and the car::Anova test provide the same qualitative conclusions. None of the terms are statistically significant, i.e., the the probability that we would observe the improvement in model fit (likelihood) that is obtained by adding explanatory variables when those explanatory variables don't matter is large. There do not appear to be any differences in the expected count among treatments after accounting for differences in infection probability.
+Both the pair-wise lrtest and the car::Anova test provide the same qualitative conclusions.
+
+There do not appear to be any differences in the expected count among treatments after accounting for differences in infection probability.
 
 ```{r}
 library(emmeans)
@@ -1158,14 +1124,13 @@ zero_summary %>%
 
 
 
-#trying stuff
+#Full model for infection intensity
 ``` {r}
 library(emmeans)
 
 predict(zi_nb_all, newdata = expand.grid(Time_treatment = c("Day", "Night"), Age = 6:9, fr_sw = seq(-0.5, 0.8, .2)), type = "response")
-#predict(zi_nb_time, newdata = expand.grid(Time_treatment = c("Day", "Night"), Age = 6:9), type = "count")
-#predict(zi_nb_time, newdata = expand.grid(Time_treatment = c("Day", "Night"), Age = 6:9), type = "zero")
-
+#predict(zi_nb_all, newdata = expand.grid(Time_treatment = c("Day", "Night"), Age = 6:9, fr_sw = seq(-0.5, 0.8, .2)), type = "count")
+#predict(zi_nb_all, newdata = expand.grid(Time_treatment = c("Day", "Night"), Age = 6:9, fr_sw = seq(-0.5, 0.8, .2)), type = "zero")
 
 # zi_nb_age_time
 emm_response_all <- emmeans(zi_nb_all, specs = c("Time_treatment", "Age"), by = "fr_sw", mode = "response") # arithmatic mean
@@ -1173,17 +1138,6 @@ emm_count_all <- emmeans(zi_nb_all, specs = "Time_treatment", by = c("Age", "fr_
 ```
 
 ```{r}
-# get CI for plotting response
-#model_mat <- model.matrix(zi_nb_all) %>% unique()
-#rownames(model_mat) <- c("age6_day", "age6_night",
-#                      "age7_day", "age7_night",
-#                      "age8_day", "age8_night",
-#                      "age9_day", "age9_night")
-#model_mat
-
-#contr_list <- lapply(1:nrow(model_mat), function(x) model_mat[x,])
-#names(contr_list) <- rownames(model_mat)
-
 contrast(emm_response_all, spec = "pairwise", by = c("Age", "fr_sw"))
 
 contrast(emm_count_all, spec = "pairwise", by = c("Age", "fr_sw"))
@@ -1195,10 +1149,8 @@ emmip(emm_count_all,~ fr_sw | Time_treatment, CIs = TRUE) +
     geom_point(aes(x = fr_sw, y = spore_counts), data = reg_data, pch = 2, color = "blue")
 ```
 
-
-
 ```{r}
-
+#response
 summary(contrast(emm_response_all, "revpairwise"))
 confint(contrast(emm_response_all, "revpairwise")) # night - day for response
 
@@ -1206,4 +1158,18 @@ confint(contrast(emm_response_all, "revpairwise")) # night - day for response
 cont_count_all <- contrast(emm_count_all, "revpairwise") # night - day for count
 summary(cont_count_all)
 confint(cont_count_all)
+
+nd_time2 <- zero_summary %>% dplyr::select(Age, Time_treatment, fr_sw)
+emm_response_all2 <- emmeans(zi_nb_all, ~ Time_treatment | Age, at = list(Age = 6:9)) #what does ~ Time | Age do?
+(emm_response_all2_df <- emm_response_all2 %>% data.frame())
+
+emm_count_all_df <- emm_count_all %>% data.frame() %>% rename("count_time" = emmean, "count_lcl" = asymp.LCL, "count_ucl" = asymp.UCL)
+
+nd_time2$count_time <- predict(zi_nb_all, newdata = nd_time2, type = "count") 
+nd_time2$response_time <- predict(zi_nb_all, newdata = nd_time2, type = "response") #why are these different from above
+
+#nd_time2 <- inner_join(nd_time2, emm_count_all_df, by = c("Time_treatment", "count_time")) 
+#nd_time2 <- inner_join(nd_time2, emm_response_all_df, by = c("Time_treatment"))
+
+
 ```
