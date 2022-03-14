@@ -324,6 +324,7 @@ po_correct %>%
   facet_grid(~Age)
 
 summary(po_plot<-glm(PO ~ Age + Hours, family = gaussian(link = "log"), data = po_correct))
+with(summary(po_plot), 1 - deviance/null.deviance) #rsquared .226
 crit <- 1.96
 nd2 <- expand.grid(Hours=c(3,6,9,12,15,18,21,24), Age = seq(6, 9, length.out = 4))
 po_fig <- predict(po_plot, newdata = nd2, se.fit = TRUE) %>%
@@ -359,6 +360,7 @@ ggplot() +
 ggsave("po_figure.png", bg = "transparent", height =5, width = 9)
 
 summary(po_plot2<-glm(size_cor ~ Age + Hours, family = gaussian(link = "log"), data = po_correct))
+with(summary(po_plot2), 1 - deviance/null.deviance) #rsquared .14
 crit <- 1.96
 nd3 <- expand.grid(Hours=c(3,6,9,12,15,18,21,24), Age = seq(6, 9, length.out = 4))
 po_fig2 <- predict(po_plot2, newdata = nd3, se.fit = TRUE) %>%
@@ -391,20 +393,21 @@ ggplot() +
         panel.border = element_rect(fill="transparent", color="black", size = 1),
         panel.spacing = unit(1, "lines"))
 ```
-```
+
 
 
 #Stats
 
 ## infection
-```{r infection_prevalence}
+```{r infection_prevalence, include = FALSE}
 prev <- all.data %>%
   filter(Exposed.Control == "Exposed", 
          days_post_exposure == 0) %>%
   group_by(Age, Time_treatment) %>%
   summarise(inf = sum(infected, na.rm=T),
             n = n(),
-            prev = inf/n)
+            prev = inf/n, 
+            fr_sw= mean(fr_sw))
 
 prev %>% knitr::kable()
 
@@ -455,25 +458,22 @@ Note: We should try including age at death as a predictor of infection (if it ma
 
 ```{r}
 # likelihood ratio test for significance of linear age term
-# marginally significant
+# age marginally significant, time significant
 car::Anova(inf_main, test = "LR")
 
 # likelihood ratio test for significance of linear fr term
-# Not significant
+# Time and age are significant
 car::Anova(inf_fr, test = "LR")
 
 # likelihood ratio test for significance of exposure time specific effect of age
-# Not significant
-car::Anova(inf_full_lin, test = "LR")
-
-#USE this
+# Time and Age are significant
 car::Anova(inf_full, test = "LR")
 
 ```
 
 ```{r}
-AIC(inf_time, inf_main, inf_fr, inf_full_lin, inf_full_cat) %>%
-  mutate(deltaAIC = AIC - min(AIC)) %>% add_column(model = c("time", "Age + time", "Age + fr + time", "Age*time", "factor(Age)*time"), .before = 1)
+AIC(inf_time, inf_main, inf_fr, inf_full) %>%
+  mutate(deltaAIC = AIC - min(AIC)) %>% add_column(model = c("time", "Age + time", "Age + fr + time", "Age*time*fr"), .before = 1)
 ```
 
 
@@ -481,7 +481,7 @@ AIC(inf_time, inf_main, inf_fr, inf_full_lin, inf_full_cat) %>%
 crit <- 1.96
 
 inf_preds <- 
-  predict(inf_main, newdata = prev, type = "link", se.fit = TRUE) %>% 
+  predict(inf_full, newdata = prev, type = "link", se.fit = TRUE) %>% 
   as_tibble() %>%
   mutate(half = crit * se.fit,
          lwr = fit - half,
@@ -588,50 +588,33 @@ inf_OR_unadjusted
 
 ```{r}
 # built-in way to get LR confidence intervals
-CI_OR_night <- confint(inf_main, parm = "Time_treatmentNight", level = 0.95)
-CI_OR_day <- confint(inf_main, parm = "(Intercept)", level = 0.95)
-CI_OR_age <- confint(inf_main, parm = "Age", level = 0.95)
+CI_OR_night <- confint(inf_full, parm = "Time_treatmentNight", level = 0.95)
+CI_OR_day <- confint(inf_full, parm = "(Intercept)", level = 0.95)
+CI_OR_age <- confint(inf_full, parm = "Age", level = 0.95)
 
 # odds of infection by 1 day increase in age at exposure
-exp(coef(inf_main)[2])
+exp(coef(inf_full)[2])
 exp(CI_OR_age)
 
-# odds of infection at night vs day
-exp(coef(inf_main)[3])
+# odds of infection at median feeding rate
+exp(coef(inf_full)[3])
+
+#odds of infection at night
+exp(coef(inf_full)[4])  #.08% to 424,3388%
 exp(CI_OR_night)
 
 # transform to probability scale
 # point estimate and  95 % likelihood ratio interval
 # day
-boot::inv.logit(coef(inf_main)[1]) 
+boot::inv.logit(coef(inf_full)[1]) 
 boot::inv.logit(CI_OR_day)
 # night
-boot::inv.logit(coef(inf_main)[3])
+boot::inv.logit(coef(inf_full)[4])
 boot::inv.logit(CI_OR_night)
 
 
 ```
 
-What if we looked at the random effect of age instead of fixed linear effect? It may be the case that the increase is infection probability is driven by the age 6 day group which has only one infected daphnia. There may be a random effect of age since we see a similar up-down pattern across ages for each time treatment.
-
-```{r}
-library(lme4)
-
-# fit binomial model with random intercept by age grouping
-# bernoulli model
-inf_rand_age <- glmer(infected ~ Time_treatment + (1 | Age), family = binomial(), data = reg_data)
-# binomial
-prev_rand_age <- glmer(inf/n ~ Time_treatment + (1 | Age), family = binomial(), data = prev, weights = n)
-# fit binomial glm with to compare with binomial mixed model
-prev_main <- glm(inf/n ~ Time_treatment + Age, family = binomial(), data = prev, weights = n)
-# random effect estimates are similar between bernoulli and binomial specification
-summary(inf_rand_age)
-summary(prev_rand_age)
-
-# compare AIC
-AIC(inf_main, inf_rand_age)
-AIC(prev_main, prev_rand_age)
-```
 
 
 ##spore intensity
@@ -647,7 +630,8 @@ zero_summary <-
             n_zeros = sum(spore_counts == 0, na.rm = TRUE),
             n_na = sum(is.na(spore_counts)),
             n_infected = sum(infected == 1, na.rm = TRUE),
-            n_animals = n())
+            n_animals = n(), 
+            fr_sw = mean(fr_sw))
 zero_summary %>% knitr::kable(digits = 2)
 
 # 5 daphnia have just 1 spore counted, including the only daphnia that was infected in Age 6 Day trt.
