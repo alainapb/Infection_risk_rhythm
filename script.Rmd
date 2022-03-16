@@ -407,7 +407,7 @@ prev <- all.data %>%
   summarise(inf = sum(infected, na.rm=T),
             n = n(),
             prev = inf/n, 
-            fr_sw= mean(fr_sw))
+            sc_fr_sw = 0)
 
 prev %>% knitr::kable()
 
@@ -421,6 +421,9 @@ prev %>% ggplot() +
 # get subset for infection and spore count analysis
 # arbitrarily choose 0 days post exposure since the data is duplicated for each days_post_exposure
 reg_data <- filter(all.data, Exposed.Control == "Exposed", days_post_exposure == 0) 
+reg_data$sc_fr_sw<-(reg_data$fr_sw - mean (reg_data$fr_sw))/ sd (reg_data$fr_sw) # scaling feeding rate
+
+summary(reg_data)
 
 # logistic regression
 # model 1: Time_treatment only
@@ -428,13 +431,13 @@ inf_time <- glm(infected ~ Time_treatment, family = binomial , data = reg_data)
 # model 2: common linear effect of age with Time_treatment specific intercepts
 inf_main <- glm(infected ~ Age + Time_treatment, family = binomial, data = reg_data)
 # model 3: common linear effect of age and fr with time_treatment 
-inf_fr <- glm(infected ~ Age + fr_sw + Time_treatment, family = binomial, data = reg_data)
+inf_fr <- glm(infected ~ Age + sc_fr_sw + Time_treatment, family = binomial, data = reg_data)
 # model 4: Time_treatment specific intercept and slopes
 inf_full_lin <- glm(infected ~ Age * Time_treatment, family = binomial, data = reg_data)
 # model 5: full interaction model with age as categorical
 inf_full_cat <- glm(infected ~ factor(Age) * Time_treatment, family = binomial , data = reg_data)
 #model6
-inf_full <- glm(infected ~ Age * fr_sw * Time_treatment, family = binomial, data = reg_data)
+inf_full <- glm(infected ~ Age * sc_fr_sw * Time_treatment, family = binomial, data = reg_data)
 
 # 
 summary(inf_time)
@@ -452,7 +455,7 @@ plot(inf_full_lin, 1)
 plot(inf_full_cat, 1)
 ```
 
-Based on the sign of the coefficient for Time_treatment, all models agree that night-time exposure increases the probability of infection. The model with just time of exposure is pretty good compared to the others. Based on the likelihood ratio tests and AIC comparison below, I think that if we were going to choose one model that we should go with model 2 (infected ~ Age + time_treatment).
+Based on the sign of the coefficient for Time_treatment, all models agree that night-time exposure increases the probability of infection. The model with just time of exposure is pretty good compared to the others. Based on the likelihood ratio tests and AIC comparison below, I think that if we were going to choose one model that we should go with model 6 (infected ~ Age + time_treatment + fr).
 
 Note: We should try including age at death as a predictor of infection (if it makes sense, i.e., dying soon after exposure "censors" the infection outcome) or spore counts. Nevermind, these data are already coded as NA if daphnia die before age 8.
 
@@ -463,7 +466,7 @@ car::Anova(inf_main, test = "LR")
 
 # likelihood ratio test for significance of linear fr term
 # Time and age are significant
-car::Anova(inf_fr, test = "LR")
+car::Anova(inf_fr, test = "LR") #USE
 
 # likelihood ratio test for significance of exposure time specific effect of age
 # Time and Age are significant
@@ -476,12 +479,11 @@ AIC(inf_time, inf_main, inf_fr, inf_full) %>%
   mutate(deltaAIC = AIC - min(AIC)) %>% add_column(model = c("time", "Age + time", "Age + fr + time", "Age*time*fr"), .before = 1)
 ```
 
-
 ```{r}
 crit <- 1.96
 
 inf_preds <- 
-  predict(inf_full, newdata = prev, type = "link", se.fit = TRUE) %>% 
+  predict(inf_fr, newdata = prev, type = "link", se.fit = TRUE) %>% 
   as_tibble() %>%
   mutate(half = crit * se.fit,
          lwr = fit - half,
@@ -527,97 +529,35 @@ inf_preds %>% select(Age, Time_treatment, inf, n, prev, fit, lwr, upr) %>%
 ```
 
 
-```{r eval = FALSE}
-library(mcprofile)
-K <- matrix(c(1, 6, 0,
-              1, 6, 1,
-              1, 7, 0,
-              1, 7, 1,
-              1, 8, 0,
-              1, 8, 1,
-              1, 9, 0,
-              1, 9, 1), byrow = TRUE, nrow = 8, ncol = 3)
-
-lin.combo <- mcprofile(inf_main, CM = K)
-# get CI for log odds
-inf_CI_unadjusted <- confint(lin.combo, level = 0.95, adjust = "none")
-inf_CI_bonferroni <- confint(lin.combo, level = 0.95, adjust = "bonferroni")
-
-# transform estimate and interval to probability scale
-inf_CI_lr_unadjusted <-  cbind(inf_CI_unadjusted$estimate, inf_CI_unadjusted$confint) %>%
-  mutate(prob = boot::inv.logit(Estimate),
-         prob_lwr = boot::inv.logit(lower),
-         prob_upr = boot::inv.logit(upper),
-         adjust = "none") %>%
-  cbind(prev)
-
-inf_CI_lr_bonferroni <- cbind(inf_CI_bonferroni$estimate, inf_CI_bonferroni$confint) %>%
-  mutate(prob = boot::inv.logit(Estimate),
-         prob_lwr = boot::inv.logit(lower),
-         prob_upr = boot::inv.logit(upper),
-         adjust = "Bonferroni") %>%
-  cbind(prev)
-
-inf_lr_CI <- rbind(inf_CI_lr_bonferroni, inf_CI_lr_unadjusted)
-inf_lr_CI %>% knitr::kable(digits = 2)
-```
-
-We are 95% confident that the odds of infection when Daphnia are exposed at night is 1.31 to 2.76 times as large when exposed at day when age of exposure is held constant. We are 95% confident that the odds of infection 
-
-```{r eval = FALSE}
-inf_lr_CI %>%
-  ggplot() +
-  geom_line(aes(x = Age, y = prob, col = Time_treatment)) +
-  geom_ribbon(aes(x = Age, ymin = prob_lwr, ymax = prob_upr, fill = Time_treatment), alpha = 0.3) +
-  geom_point(aes(x = Age, y = prev, col = Time_treatment)) +
-  facet_wrap(~adjust)
-```
-```{r eval = FALSE}
-K <- matrix(c(0, 1, 0,
-              0, 0, 1), 
-            byrow = TRUE, nrow = 2, ncol = 3)
-
-lin.combo <- mcprofile(inf_main, CM = K)
-# get CI for log odds
-inf_OR_unadjusted <- confint(lin.combo, level = 0.95, adjust = "none")
-inf_OR_bonferroni <- confint(lin.combo, level = 0.95, adjust = "bonferroni")
-
-inf_OR_unadjusted
-
-```
-
 ```{r}
 # built-in way to get LR confidence intervals
-CI_OR_night <- confint(inf_full, parm = "Time_treatmentNight", level = 0.95)
-CI_OR_day <- confint(inf_full, parm = "(Intercept)", level = 0.95)
-CI_OR_age <- confint(inf_full, parm = "Age", level = 0.95)
+CI_OR_night <- confint(inf_fr, parm = "Time_treatmentNight", level = 0.95)
+CI_OR_day <- confint(inf_fr, parm = "(Intercept)", level = 0.95)
+CI_OR_age <- confint(inf_fr, parm = "Age", level = 0.95)
 
 # odds of infection by 1 day increase in age at exposure
-exp(coef(inf_full)[2])
+exp(coef(inf_fr)[2])
 exp(CI_OR_age)
 
 # odds of infection at median feeding rate
-exp(coef(inf_full)[3])
+exp(coef(inf_fr)[3])
 
 #odds of infection at night
-exp(coef(inf_full)[4])  #246% increase (-99% to )
+exp(coef(inf_fr)[4])  #
 exp(CI_OR_night)
 
 # transform to probability scale
 # point estimate and  95 % likelihood ratio interval
 # day
-boot::inv.logit(coef(inf_full)[1]) 
+boot::inv.logit(coef(inf_fr)[1]) 
 boot::inv.logit(CI_OR_day)
 # night
-boot::inv.logit(coef(inf_full)[4])
+boot::inv.logit(coef(inf_fr)[4])
 boot::inv.logit(CI_OR_night)
-
 
 ```
 
-
-
-##spore intensity
+##Spore Intensity
 
 ```{r}
 zero_summary <- 
@@ -689,14 +629,11 @@ ggplot() +
   geom_point(data = filter(zero_summary, Time_treatment == "Night"), 
              aes(x = Age + 0.1, y = clog(cond_mean_spore_counts), col = Time_treatment), 
              size = 4, shape = 24) 
-
-
-#plot(clog(spore_counts) ~ factor(interaction(Time_treatment, factor(Age))), data = reg_data)
 ```
 
 Looking at the log count, it actually appears that only the day treatment has an positive effect of age on spore count. There doesn't appear to be any age effect on mean spore count for the night treatment.
 
-```{r}
+```{r colinearity, include = FALSE}
 # look for potential colinearity
 reg_data %>%
   ggplot() +
@@ -706,11 +643,9 @@ reg_data %>%
   ggplot() +
   geom_jitter(aes(x = Age, y = Length_at_exposure_mm^3, col = factor(infected)))
 
-cor.test(reg_data$Age, reg_data$Length_at_exposure_mm)
+cor.test(reg_data$Age, reg_data$Length_at_exposure_mm) #age and size are correlated
 ```
-
-
-```{r}
+```{r size_at_exposure, include = FALSE}
 reg_data %>%
   ggplot() +
   geom_point(aes(x = Length_at_exposure_mm, y = clog(spore_counts)))
@@ -720,11 +655,9 @@ reg_data %>%
   geom_point(aes(x = Length_at_exposure_mm^3, y = clog(spore_counts)))
 
 ```
-
 Hmm, maybe length at exposure isn't that informative? Ignoring the zero counts, it appear that log(spore counts) doesn't vary with length of volume of daphnia at exposure.
 
-### zero-inflated and hurdle models
-
+### Zero-inflated and hurdle models
 ```{r}
 library(pscl)
 #library(countreg)
@@ -782,18 +715,10 @@ zi_nb_age_fr<- zeroinfl(spore_counts ~ Age + fr_sw | Age + Time_treatment,
        dist = "negbin", link = "logit", data = reg_data)
 zi_nb_time_fr<- zeroinfl(spore_counts ~ Time_treatment + fr_sw | Age + Time_treatment,
        dist = "negbin", link = "logit", data = reg_data)
-zi_nb_all<- zeroinfl(spore_counts ~ Age * Time_treatment * fr_sw | Age + Time_treatment,
+zi_nb_all<-zeroinfl(spore_counts ~ Age + Time_treatment + fr_sw | Age + Time_treatment,
        dist = "negbin", link = "logit", data = reg_data)
-
-# poisson
-zi_poi_null <- zeroinfl(spore_counts ~ 1 | Age + Time_treatment,
-       dist = "poisson", link = "logit", data = reg_data)
-zi_poi_time <- zeroinfl(spore_counts ~ Time_treatment | Age + Time_treatment,
-       dist = "poisson", link = "logit", data = reg_data)
-zi_poi_age_time <- zeroinfl(spore_counts ~ Age + Time_treatment | Age + Time_treatment,
-       dist = "poisson", link = "logit", data = reg_data)
-zi_poi_age_time_int <- zeroinfl(spore_counts ~ Age * Time_treatment | Age + Time_treatment,
-       dist = "poisson", link = "logit", data = reg_data)
+zi_nb_all_int<- zeroinfl(spore_counts ~ Age * Time_treatment * fr_sw | Age + Time_treatment,
+       dist = "negbin", link = "logit", data = reg_data)
 
 bbmle::AICtab(zi_nb_null,
               zi_nb_time,
@@ -803,10 +728,7 @@ bbmle::AICtab(zi_nb_null,
               zi_nb_age_time_int,
               zi_nb_age_fr,
               zi_nb_all,
-              zi_poi_null,
-              zi_poi_time,
-              zi_poi_age_time,
-              zi_poi_age_time_int,
+              zi_nb_all_int,
               logLik = TRUE, base = TRUE) %>%
   data.frame() %>%
   dplyr::select(-dLogLik) %>%
@@ -814,24 +736,20 @@ bbmle::AICtab(zi_nb_null,
   knitr::kable(digits = 2)
 
 ```
-
 So, we can see from AIC comparison that the negative binomial is better than poisson.
 
 Let's look at likelihood ratio tests for model selection.
 ```{r}
 # using function from lmtest
-lrtest(zi_nb_null, zi_nb_all) #0.062
-lrtest(zi_nb_time, zi_nb_all) # *0.052
-lrtest(zi_nb_age_time, zi_nb_all) # * 0.0375
+lrtest(zi_nb_null, zi_nb_all_int) #0.0621
+lrtest(zi_nb_all, zi_nb_all_int) # * 0.030
 ```
 
 
 ```{r}
-# is this correct?
 # output agrees with previous code chunk
-car::Anova(zi_nb_age_time_int, test = "Chisq")
-
 car::Anova(zi_nb_all, test = "Chisq")
+car::Anova(zi_nb_all_int, test = "Chisq")
 ```
 
 Both the pair-wise lrtest and the car::Anova test provide the same qualitative conclusions.
@@ -840,78 +758,49 @@ There do not appear to be any differences in the expected count among treatments
 
 ```{r}
 library(emmeans)
+newdata <- expand.grid(Time_treatment = c("Day", "Night"), Age = 6:9, fr_sw =median(all.data$fr_sw, na.rm = TRUE))
 
-predict(zi_nb_time, newdata = expand.grid(Time_treatment = c("Day", "Night"), Age = 6:9), type = "response")
-predict(zi_nb_time, newdata = expand.grid(Time_treatment = c("Day", "Night"), Age = 6:9), type = "count")
-predict(zi_nb_time, newdata = expand.grid(Time_treatment = c("Day", "Night"), Age = 6:9), type = "zero")
+newdata$response<-predict(zi_nb_all, newdata, type = "response")
+newdata$count<-predict(zi_nb_all, newdata, type = "count")
 
-# zi_nb_time
-emm_response <- emmeans(zi_nb_time, "Time_treatment", mode = "response") # arithmatic mean
-emm_response_lin <- emmeans(zi_nb_time, "Time_treatment", mode = "response", lin.pred = T) # geometric mean
-emm_count <- emmeans(zi_nb_time, "Time_treatment", mode = "count")
-# emmeans(zi_nb_time, "Time_treatment", mode = "prob0")
+# zi_nb_all
+emm_response <- emmeans(zi_nb_all, ~ Time_treatment | Age, at = list(Age = 6:9), mode = "response") # arithmatic mean
+emm_response_lin <- emmeans(zi_nb_all, ~ Time_treatment | Age, at = list(Age = 6:9), mode = "response", lin.pred = T) # geometric mean
+emm_count <- emmeans(zi_nb_all, ~ Time_treatment | Age, at = list(Age = 6:9), mode = "count")
 
-# zi_nb_age_time
-emm_response_age_time <- emmeans(zi_nb_age_time, specs = "Time_treatment", by = "Age", mode = "response") # arithmatic mean
-emm_count_age_time <- emmeans(zi_nb_age_time, specs = "Time_treatment", by = "Age", mode = "count")
-```
-
-```{r}
-# get CI for plotting response
-model_mat <- model.matrix(zi_nb_age_time) %>% unique()
-rownames(model_mat) <- c("age6_day", "age6_night",
-                      "age7_day", "age7_night",
-                      "age8_day", "age8_night",
-                      "age9_day", "age9_night")
-model_mat
-
-contr_list <- lapply(1:nrow(model_mat), function(x) model_mat[x,])
-names(contr_list) <- rownames(model_mat)
-
-contrast(emm_response_age_time, spec = "pairwise", by = "Age")
-
-emmip(emm_response_age_time, ~ Age | Time_treatment, CIs = TRUE) +
-    geom_point(aes(x = Age, y = spore_counts), data = reg_data, pch = 2, color = "blue")
-```
+#confidence intervals for plot
+emm_count_df <- emm_count %>% data.frame() %>% rename("count_emm" = emmean, "count_lcl" = asymp.LCL, "count_ucl" = asymp.UCL)
+emm_response_df <- emm_response %>% data.frame() %>% rename("response_emm" = emmean, "response_lcl" = asymp.LCL, "response_ucl" = asymp.UCL)
 
 
-```{r}
-# mod.mat <- model.matrix(zi_nb_time) %>% unique()
-# row.names(mod.mat) <- c("day", "night")
-# 
-# night_vs_day <- list("night vs day, age 6" = mod.mat["night",] - mod.mat["day",])
-
-# response
-# lf_response <- contrast(emm_response, night_vs_day)
-# cont_response <- contrast(emm_response, "revpairwise")
-# summary(lf_response)
-# confint(lf_response)
-# 
-
+#Night - Day difference
 summary(contrast(emm_response, "revpairwise"))
 confint(contrast(emm_response, "revpairwise")) # night - day for response
-# confint(contrast(emm_response_lin, "revpairwise")) # using linear.predictor scale doesn't change anything
+
+#get average over age for above
+summary(contrast(emmeans(zi_nb_all, ~ Time_treatment, mode = "response"), "revpairwise"))
+confint(contrast(emmeans(zi_nb_all, ~ Time_treatment, mode = "response"), "revpairwise"))
 
 # count
 cont_count <- contrast(emm_count, "revpairwise") # night - day for count
 summary(cont_count)
 confint(cont_count)
+
+#get average over age for above
+summary(contrast(emmeans(zi_nb_all, ~ Time_treatment, mode = "count"), "revpairwise"))
+confint(contrast(emmeans(zi_nb_all, ~ Time_treatment, mode = "count"), "revpairwise"))
+
+
 ```
 
+
 ```{r}
-nd_time <- zero_summary %>% dplyr::select(Age, Time_treatment)
-emm_count_df <- emm_count %>% data.frame() %>% rename("count_time" = emmean, "count_lcl" = asymp.LCL, "count_ucl" = asymp.UCL)
-emm_response_df <- emm_response %>% data.frame() %>% rename("response_time_emm" = emmean, "response_lcl" = asymp.LCL, "response_ucl" = asymp.UCL)
-
-nd_time$count_time <- predict(zi_nb_time, newdata = nd_time, type = "count")
-nd_time$response_time <- predict(zi_nb_time, newdata = nd_time, type = "response")
-
-nd_time <- inner_join(nd_time, emm_count_df, by = c("Time_treatment", "count_time")) 
-nd_time <- inner_join(nd_time, emm_response_df, by = c("Time_treatment"))
+newdata <- inner_join(newdata, emm_count_df, by = c("Time_treatment", "Age")) 
+newdata<- inner_join(newdata, emm_response_df, by = c("Time_treatment", "Age"))
 
 # plot predicted and observed counts
-ggplot() +
-  geom_ribbon(data = nd_time, 
+p_count<-ggplot() +
+  geom_ribbon(data = newdata, 
               aes(x = Age, ymin = count_lcl, ymax = count_ucl, fill = Time_treatment), 
               alpha = 0.4) +  
   geom_jitter(data = zero_summary, 
@@ -920,8 +809,8 @@ ggplot() +
   geom_jitter(data = filter(reg_data, infected == 1), 
               aes(x = Age, y = spore_counts, col = Time_treatment), 
               shape = 3, height = 0, width = 0.1) +
-  geom_line(data = nd_time, 
-            aes(x = Age, y = count_time, col = Time_treatment, linetype = Time_treatment)) +
+  geom_line(data = newdata, 
+            aes(x = Age, y = count_emm, col = Time_treatment, linetype = Time_treatment), size = 1) +
     labs(y = "Spore counts when infected", x = "Age at exposure (days)",
        col = "Exposure\ntime",
        fill = "Exposure\ntime",
@@ -933,8 +822,8 @@ ggplot() +
 
 # plot predicted and observed response
 # emm output with CI
-ggplot() +
-  geom_ribbon(data = nd_time, 
+p_response<-ggplot() +
+  geom_ribbon(data = newdata, 
               aes(x = Age, ymin = response_lcl, ymax = response_ucl, fill = Time_treatment), 
               alpha = 0.4) +  
   geom_jitter(data = zero_summary, 
@@ -943,8 +832,8 @@ ggplot() +
   geom_jitter(data = reg_data, 
               aes(x = Age, y = spore_counts, col = Time_treatment), 
               shape = 3, height = 0, width = 0.1) +
-  geom_line(data = nd_time, 
-            aes(x = Age, y = response_time_emm, col = Time_treatment, linetype = Time_treatment)) +
+  geom_line(data = newdata, 
+            aes(x = Age, y = response_emm, col = Time_treatment, linetype = Time_treatment), size = 1) +
     labs(y = "Spore counts", x = "Age at exposure (days)",
        col = "Exposure\ntime",
        fill = "Exposure\ntime",
@@ -954,222 +843,8 @@ ggplot() +
   scale_fill_manual(values=c("#ffcc33", "#0033cc"))+
   theme_bw()
 
-# predict output no CI
-ggplot() +
-  geom_jitter(data = zero_summary, 
-             aes(x = Age, y = mean_spore_counts, col = Time_treatment, size = n_infected), 
-             alpha = 1, height = 0, width = 0.1) +
-  geom_jitter(data = reg_data, 
-              aes(x = Age, y = spore_counts, col = Time_treatment), 
-              shape = 3, height = 0, width = 0.1) +
-  geom_line(data = nd_time, 
-            aes(x = Age, y = response_time, col = Time_treatment, linetype = Time_treatment)) +
-  geom_line(data = nd_time, 
-            aes(x = Age, y = response_time_emm, linetype = Time_treatment)) +
-    labs(y = "Spore counts", x = "Age at exposure (days)",
-       col = "Exposure\ntime",
-       fill = "Exposure\ntime",
-       linetype = "Exposure\ntime",
-       size = "# infected") +
-  scale_color_manual(values=c("#ffcc33", "#0033cc"))+
-  scale_fill_manual(values=c("#ffcc33", "#0033cc"))+
-  theme_bw()
-
-```
-
-In the last plot, we can clearly see that the emmeans package computed the count based on the average age at exposure since the lines cross at 7.5.
-
-```{r}
-# here is how to specify level of continuous predictor
-# spore_counts ~ time
-emm_response_time <- emmeans(zi_nb_age_time, ~ Time_treatment | Age, at = list(Age = 6:9))
-(emm_response_time_df <- emm_response_time %>% data.frame())
-# spore_counts ~ age + time
-emm_response_age_time <- emmeans(zi_nb_time, ~ Time_treatment | Age, at = list(Age = 6:9))
-(emm_response_age_time_df <- emm_response_age_time %>% data.frame())
-
-# contrast between day and night
-contrast(emm_response_time, "pairwise")
-```
-
-```{r}
-p_count <- 
-  ggplot() +
-  geom_ribbon(data = nd_time, 
-              aes(x = Age, ymin = count_lcl, ymax = count_ucl, fill = Time_treatment), 
-              alpha = 0.3) +  
-  geom_jitter(data = zero_summary, 
-             aes(x = Age, y = cond_mean_spore_counts, col = Time_treatment, size = n_infected), 
-             alpha = 1, height = 0, width = 0.1) +
-  geom_jitter(data = filter(reg_data, infected == 1), 
-              aes(x = Age, y = spore_counts, col = Time_treatment), 
-              shape = 3, height = 0, width = 0.1) +
-  geom_line(data = nd_time, 
-            aes(x = Age, y = count_time, col = Time_treatment, linetype = Time_treatment)) +
-    labs(y = "Spore counts when infected", x = "Age at exposure (days)",
-       col = "Exposure\ntime",
-       fill = "Exposure\ntime",
-       linetype = "Exposure\ntime",
-       size = "# infected") +
-  scale_color_manual(values=c("#ffcc33", "#0033cc"))+
-  scale_fill_manual(values=c("#ffcc33", "#0033cc"))+
-  theme_bw()
-
-
-p_response <- 
-  ggplot() +
-  geom_line(data = emm_response_time_df, aes(x = Age, y = emmean, col = Time_treatment, linetype = Time_treatment)) +
-  geom_ribbon(data = emm_response_time_df, 
-              aes(x = Age, ymin = asymp.LCL, ymax = asymp.UCL, fill = Time_treatment), alpha = 0.3) + 
-  geom_jitter(data = zero_summary, 
-             aes(x = Age, y = mean_spore_counts, col = Time_treatment, size = n_infected), 
-             alpha = 1, height = 0, width = 0.1) +
-  geom_jitter(data = reg_data, 
-              aes(x = Age, y = spore_counts, col = Time_treatment), 
-              shape = 3, height = 0, width = 0.1) +
-    labs(y = "Spore counts", x = "Age at exposure (days)",
-       col = "Exposure\ntime",
-       fill = "Exposure\ntime",
-       linetype = "Exposure\ntime",
-       size = "# infected") +
-  scale_color_manual(values=c("#ffcc33", "#0033cc"))+
-  scale_fill_manual(values=c("#ffcc33", "#0033cc"))+
-  theme_bw()
-  
-    
-```
-
-
-```{r}
 combined <- (p_count & theme(legend.position = "none")) + p_response
 combined + plot_layout(guides = "collect") + plot_annotation(tag_levels = 'A')
-```
 
-
-```{r}
-# zi negbin null model conditional count predictions
-nd <- zero_summary %>% dplyr::select(Age, Time_treatment)
-#summary(zi_nb_null)
-nd$count_null <- predict(zi_nb_null, newdata = nd, type = "count")
-zi_nb_null_CI <- confint(zi_nb_null) %>% as_tibble()
-
-nd$count_null_lwr <- zi_nb_null_CI[1,1] %>% pull() %>% exp()
-nd$count_null_upr <- zi_nb_null_CI[1,2] %>% pull() %>% exp()
-
-# plot the conditional observed count, mean count, and predicted count + CI
-ggplot() + 
-  geom_point(data = zero_summary, 
-             aes(x = Age, y = cond_mean_spore_counts, col = Time_treatment, size = n_infected), 
-             alpha = 0.5) +
-  geom_jitter(data = filter(reg_data, infected == 1), 
-              aes(x = Age, y = spore_counts, col = Time_treatment), 
-              shape = 3, height = 0, width = 0.1) +
-  geom_line(data = nd, 
-            aes(x = Age, y = count_null)) +
-  geom_ribbon(data = nd, 
-              aes(x = Age, ymin = count_null_lwr, ymax = count_null_upr), 
-              alpha = 0.2) +
-    labs(y = "Spore Counts when Infected", x = "Age at Exposure (days)",
-       col = "Exposure\ntime",
-       size = "No. Infected") +
-  scale_color_manual(values=c("#ffcc33", "#0033cc"))+
-  scale_fill_manual(values=c("#ffcc33", "#0033cc"))+
-  theme_bw()
-
-# zi negbin null model response prediction
-nd$response_null <- predict(zi_nb_null, newdata = nd, type = "response")
-
-# need to figure out how to compute CI for this
-
-# plot mean spore count conditional on infection probability
-ggplot() + 
-  geom_point(data = zero_summary, 
-             aes(x = Age, y = mean_spore_counts, col = Time_treatment, size = n_infected), 
-             alpha = 0.5) +
-  geom_jitter(data = reg_data, 
-              aes(x = Age, y = spore_counts, col = Time_treatment), 
-              shape = 3, height = 0, width = 0.1) +
-  geom_line(data = nd, 
-            aes(x = Age, y = response_null, col = Time_treatment)) +
-  labs(y = "Spore Counts", x = "Age at Exposure (days)",
-       col = "Exposure\ntime",
-       size = "No. Infected") +
-  scale_color_manual(values=c("#ffcc33", "#0033cc"))+
-  scale_fill_manual(values=c("#ffcc33", "#0033cc"))+
-  theme_bw()+
-  theme(axis.title.y = element_text(size = 12, color ="black"), 
-        axis.title.x = element_text(size = 12, color ="black"), 
-        axis.text = element_text(size = 8, color="black"), 
-        legend.text = element_text(size=10, color = "black"))
-
-
-```
-
-
-```{r}
-zero_summary$response <- predict(zi_nb_time, newdata = zero_summary, type = "response")
-zero_summary$count <- predict(zi_nb_time, newdata = zero_summary, type = "count")
-zero_summary$prob_zero <- predict(zi_nb_time, newdata = zero_summary, type = "zero")
-
-zero_summary %>% knitr::kable(digits = 2)
-```
-
-```{r}
-zero_summary %>%
-  group_by(Age) %>%
-  summarise("night - day" = response - lag(response)) %>%
-  ungroup() %>%
-  summarise("night - day" = mean(`night - day`, na.rm = T))
-``` 
-
-
-
-#Full model for infection intensity
-``` {r}
-library(emmeans)
-
-predict(zi_nb_all, newdata = expand.grid(Time_treatment = c("Day", "Night"), Age = 6:9, fr_sw = seq(-0.5, 0.8, .2)), type = "response")
-#predict(zi_nb_all, newdata = expand.grid(Time_treatment = c("Day", "Night"), Age = 6:9, fr_sw = seq(-0.5, 0.8, .2)), type = "count")
-#predict(zi_nb_all, newdata = expand.grid(Time_treatment = c("Day", "Night"), Age = 6:9, fr_sw = seq(-0.5, 0.8, .2)), type = "zero")
-
-# zi_nb_age_time
-emm_response_all <- emmeans(zi_nb_all, specs = c("Time_treatment", "Age"), by = "fr_sw", mode = "response") # arithmatic mean
-emm_count_all <- emmeans(zi_nb_all, specs = "Time_treatment", by = c("Age", "fr_sw"), mode = "count")
-```
-
-```{r}
-contrast(emm_response_all, spec = "pairwise", by = c("Age", "fr_sw"))
-
-contrast(emm_count_all, spec = "pairwise", by = c("Age", "fr_sw"))
-
-emmip(emm_response_all,~ fr_sw | Time_treatment, CIs = TRUE) +
-    geom_point(aes(x = fr_sw, y = spore_counts), data = reg_data, pch = 2, color = "blue")
-
-emmip(emm_count_all,~ fr_sw | Time_treatment, CIs = TRUE) +
-    geom_point(aes(x = fr_sw, y = spore_counts), data = reg_data, pch = 2, color = "blue")
-```
-
-```{r}
-#response
-summary(contrast(emm_response_all, "revpairwise"))
-confint(contrast(emm_response_all, "revpairwise")) # night - day for response
-
-# count
-cont_count_all <- contrast(emm_count_all, "revpairwise") # night - day for count
-summary(cont_count_all)
-confint(cont_count_all)
-
-nd_time2 <- zero_summary %>% dplyr::select(Age, Time_treatment, fr_sw)
-emm_response_all2 <- emmeans(zi_nb_all, ~ Time_treatment | Age, at = list(Age = 6:9)) #what does ~ Time | Age do?
-(emm_response_all2_df <- emm_response_all2 %>% data.frame())
-
-emm_count_all_df <- emm_count_all %>% data.frame() %>% rename("count_time" = emmean, "count_lcl" = asymp.LCL, "count_ucl" = asymp.UCL)
-
-nd_time2$count_time <- predict(zi_nb_all, newdata = nd_time2, type = "count") 
-nd_time2$response_time <- predict(zi_nb_all, newdata = nd_time2, type = "response") #why are these different from above
-
-#nd_time2 <- inner_join(nd_time2, emm_count_all_df, by = c("Time_treatment", "count_time")) 
-#nd_time2 <- inner_join(nd_time2, emm_response_all_df, by = c("Time_treatment"))
-
-
+ggsave("figure4.png", width = 7, height = 5)
 ```
