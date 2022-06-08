@@ -438,14 +438,19 @@ inf_full_lin <- glm(infected ~ Age * Time_treatment, family = binomial, data = r
 inf_full_cat <- glm(infected ~ factor(Age) * Time_treatment, family = binomial , data = reg_data)
 #model6
 inf_full <- glm(infected ~ Age * sc_fr_sw * Time_treatment, family = binomial, data = reg_data)
+#model7: feeding rate only
+inf_fr_only <-glm(infected ~ sc_fr_sw, family = binomial, data = reg_data)
+#age + feeding rate
+summary(glm(infected ~ Age +sc_fr_sw , family = binomial, data = reg_data))
 
-# 
+# summaries
 summary(inf_time)
 summary(inf_main)
 summary(inf_fr)
 summary(inf_full_lin)
 summary(inf_full_cat)
 summary(inf_full)
+summary(inf_fr_only)
 
 # residual plots
 plot(inf_time, 1)
@@ -475,8 +480,8 @@ car::Anova(inf_full, test = "LR")
 ```
 
 ```{r}
-AIC(inf_time, inf_main, inf_fr, inf_full) %>%
-  mutate(deltaAIC = AIC - min(AIC)) %>% add_column(model = c("time", "Age + time", "Age + fr + time", "Age*time*fr"), .before = 1)
+AIC(inf_time, inf_main, inf_fr, inf_full, inf_fr_only) %>%
+  mutate(deltaAIC = AIC - min(AIC)) %>% add_column(model = c("time", "Age + time", "Age + fr + time", "Age*time*fr", "fr"), .before = 1)
 ```
 
 ```{r}
@@ -848,3 +853,17 @@ combined + plot_layout(guides = "collect") + plot_annotation(tag_levels = 'A')
 
 ggsave("figure4.png", width = 7, height = 5)
 ```
+
+Appendix Figure 2
+```{r}
+ggplot(mapping=aes(x=Time_treatment, y = sc_fr_sw, fill = Time_treatment), data = reg_data) + 
+  geom_boxplot() + 
+  facet_grid(.~Age)+
+  scale_fill_manual(values=c("#ffcc33", "#0033cc"))+
+  labs(y = "Feeding Rate (ml/hr)", x = "Time treatment for each age of exposure (6, 7, 8, or 9)",
+       fill = "Time treatment") +
+  theme_bw()
+
+ggsave("app2.png", width = 7, height = 5)
+```
+
