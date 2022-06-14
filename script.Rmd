@@ -19,16 +19,18 @@ knitr::opts_chunk$set(echo = TRUE)
 feed_data<-read.csv("data/feeding_data_3.28.21.csv", header=T)
 
 po<-read.csv("data/4_Day_PO.csv", header = T) #Corrected_Change is the Active PO per sample (~8 ind. per sample)
-
 po_correct<- # sample number is arbitrary
   read_csv("data/PO_biodare_sample_correction.csv") %>%
   pivot_longer(cols = 2:5, names_sep = "_", 
                names_to = c(NA,"sample"), values_to = "PO")
+#add Age, Hours, Phase, and Time_treatment (Light or Dark)
+po_correct$Age<-c(rep(6, 32), rep(7,32), rep(8,32), rep(9,32))
+po_correct$Hours<-rep(c(rep(3,4), rep(6,4), rep(9, 4), rep(12,4), rep(15,4), rep(18,4), rep(21,4), rep(24,4)),4)
+po_correct$Phase<-c(rep("Resting", 20), rep('Active', 12),rep("Resting", 20), rep('Active', 12), rep("Resting", 20), rep('Active', 12), rep("Resting", 20), rep("Active", 12))
+po_correct$Time_treatment<-c(rep("Light", 20), rep('Dark', 12),rep("Light", 20), rep('Dark', 12), rep("Light", 20), rep('Dark', 44))
 
 growth<-read.csv("data/growth_data_3.28.21.csv", header=T)
-
 life<-read.csv("data/life_data_3.28.21.csv", header =T)
-
 ```
 
 
@@ -115,7 +117,7 @@ all.data %>%
   theme_bw()
 
 ```
-```{r growth_plots, echo=FALSE}
+```{r growth_plots, include=FALSE, echo = FALSE}
 growth %>%
   filter(Age == 6) %>%
   ggplot(aes(x=days_post_exposure, y=Length_at_exposure_mm, color=as.factor(Animal)))+
@@ -147,9 +149,7 @@ growth %>%
 
 ```
 
-
-```{r infection_plot, echo=FALSE}
-
+```{r infection_plot, include = FALSE, echo=FALSE}
 # infection prevalence
 all.data %>%
   filter(Time_treatment == "Exposed" | Sex == "F") %>%
@@ -161,7 +161,6 @@ all.data %>%
   scale_x_continuous(breaks=c(6,7,8,9))+
   theme_bw()
 
-
 #infection intensity
 life %>%
   filter(Time_treatment == "Exposed"| Sex == "F") %>%
@@ -171,12 +170,9 @@ life %>%
   geom_point()+
   geom_smooth(method="lm")+
   theme_bw()
-
 ```
 
-
-```{r offsrping_plots, echo=FALSE}
-
+```{r offsrping_plots, include = FASLE, echo=FALSE}
 #total offspring
 all.data %>%
   filter(Sex == "F") %>%
@@ -185,7 +181,6 @@ all.data %>%
   geom_boxplot()+
   facet_grid(~Age)
 
-
 #age at first clutch
 all.data %>% 
   filter(Sex == "F") %>%
@@ -193,7 +188,6 @@ all.data %>%
   ggplot(aes(x=Time_treatment, y=age_at_first_clutch, fill=as.factor(infected)))+
   geom_boxplot()+
   facet_grid(~Age)
-
 ```
 
 #look at size differences by age 12-14-2021
@@ -208,32 +202,13 @@ all.data %>%
   summarise(length = mean(Length_at_exposure_mm, na.rm=TRUE))-> average_size
 
 average_size$size<-(average_size$length)^3
-
 ```
+
 
 
 #PO
 ```{r po_plots, echo=FALSE}
-po_correct$Age<-c(rep(6, 32), rep(7,32), rep(8,32), rep(9,32))
-po_correct$Hours<-rep(c(rep(3,4), rep(6,4), rep(9, 4), rep(12,4), rep(15,4), rep(18,4), rep(21,4), rep(24,4)),4)
-po_correct$Phase<-c(rep("Resting", 20), rep('Active', 12),rep("Resting", 20), rep('Active', 12), rep("Resting", 20), rep('Active', 12), rep("Resting", 20), rep("Active", 12))
-po_correct$Time_treatment<-c(rep("Light", 20), rep('Dark', 12),rep("Light", 20), rep('Dark', 12), rep("Light", 20), rep('Dark', 44))
-
-no_size<-po_correct %>%
-  ggplot() +
-  geom_point(aes(x = Hours, y = log(PO), group = sample)) +
-  geom_smooth(aes(x = Hours, y = log(PO)), method = "lm", color ="orange", alpha = 0.5) +
-  labs(y="Active PO", x="Age (days)")+
-  facet_grid(~Age)+
-  #scale_x_continuous(breaks = c(24,48,72,96), labels = c(6,7, 8,9))+
-  theme_bw()+
-  theme(axis.text.x = element_text(size=8, color="black"),
-        axis.text.y = element_text(size=8, color="black"),
-        axis.title = element_text(size = 12, color="black"))
-
-#ggsave("figure2.pdf", height =4, width =6)
-
-##Size corrected plots
+##Size corrected PO
 a<-as.vector(po_correct %>% 
   filter(time < 27) %>% 
   summarise(size_cor = PO/2.425660))
@@ -254,21 +229,6 @@ size_cor<-unlist(c(a,b,c,d))
 unname(size_cor)
 po_correct$size_cor<-unlist(unname(size_cor))
 
-
-with_size<-po_correct %>%
-  ggplot() +
-  geom_point(aes(x = Hours, y = log(size_cor), group = sample)) +
-  geom_smooth(aes(x = Hours, y = log(size_cor)), method = "lm", color ="orange", alpha = .5) +
-  labs(y="Active PO", x="Age (days)")+
-  facet_grid(~Age)+
-  #scale_x_continuous(breaks = c(24,48,72,96), labels = c(6,7, 8,9))+
-  theme_bw()+
-  theme(axis.text.x = element_text(size=8, color="black"),
-        axis.text.y = element_text(size=8, color="black"),
-        axis.title = element_text(size = 12, color="black"))
-
-no_size + with_size
-
 ####### PO STATS #########
 hist(po_correct$PO)
 
@@ -284,7 +244,8 @@ po_summary <- po_correct %>%
             age_mean_po = unique(age_mean_po))
 po_summary
 
-# linear model using log(Corrected_Change) as response
+# Is PO predicted by age and light/dark?
+# linear model using log(PO) as response
 summary(po_age<-glm(PO ~ Age + Time_treatment, family = gaussian(link = "log"), data = po_correct))
 with(summary(po_age), 1 - deviance/null.deviance) #Rsquared .23
 plot(po_age)
@@ -309,20 +270,7 @@ ggplot() +
   scale_fill_manual(values=c("#0033cc", "#ffcc33"))+
   theme_bw()
 
-
-#look at size corrected PO
-summary(po_sc_age<-glm(size_cor ~ Age + Time_treatment, family = gaussian(link = "log"), data = po_correct))
-with(summary(po_sc_age), 1 - deviance/null.deviance) #rsquared .14
-```
-
-#PO plot
-```{r PO_plot_for_pub, echo = FALSE}
-po_correct %>%
-  ggplot()+
-  geom_point(aes(x=Hours, y = PO))+
-  geom_smooth(aes(x=Hours, y = PO), method = "lm")+
-  facet_grid(~Age)
-
+#IS PO predicted by Age + Hours of the day
 summary(po_plot<-glm(PO ~ Age + Hours, family = gaussian(link = "log"), data = po_correct))
 with(summary(po_plot), 1 - deviance/null.deviance) #rsquared .226
 crit <- 1.96
@@ -359,6 +307,7 @@ ggplot() +
 
 ggsave("po_figure.png", bg = "transparent", height =5, width = 9)
 
+#Is the increasing size with age driving the age patterns?
 summary(po_plot2<-glm(size_cor ~ Age + Hours, family = gaussian(link = "log"), data = po_correct))
 with(summary(po_plot2), 1 - deviance/null.deviance) #rsquared .14
 crit <- 1.96
@@ -392,11 +341,9 @@ ggplot() +
         axis.ticks = element_line(size =.3, color = "black"),
         panel.border = element_rect(fill="transparent", color="black", size = 1),
         panel.spacing = unit(1, "lines"))
+
 ```
-
-
-
-#Stats
+#Exposure Assay Stats
 
 ## infection
 ```{r infection_prevalence, include = FALSE}
@@ -436,12 +383,10 @@ inf_fr <- glm(infected ~ Age + sc_fr_sw + Time_treatment, family = binomial, dat
 inf_full_lin <- glm(infected ~ Age * Time_treatment, family = binomial, data = reg_data)
 # model 5: full interaction model with age as categorical
 inf_full_cat <- glm(infected ~ factor(Age) * Time_treatment, family = binomial , data = reg_data)
-#model6
+#model 6 : full interaction model with feeding rate
 inf_full <- glm(infected ~ Age * sc_fr_sw * Time_treatment, family = binomial, data = reg_data)
-#model7: feeding rate only
+#model 7: feeding rate only model
 inf_fr_only <-glm(infected ~ sc_fr_sw, family = binomial, data = reg_data)
-#age + feeding rate
-summary(glm(infected ~ Age +sc_fr_sw , family = binomial, data = reg_data))
 
 # summaries
 summary(inf_time)
@@ -476,7 +421,6 @@ car::Anova(inf_fr, test = "LR") #USE
 # likelihood ratio test for significance of exposure time specific effect of age
 # Time and Age are significant
 car::Anova(inf_full, test = "LR")
-
 ```
 
 ```{r}
@@ -559,7 +503,6 @@ boot::inv.logit(CI_OR_day)
 # night
 boot::inv.logit(coef(inf_fr)[4])
 boot::inv.logit(CI_OR_night)
-
 ```
 
 ##Spore Intensity
@@ -582,11 +525,9 @@ zero_summary %>% knitr::kable(digits = 2)
 # 5 daphnia have just 1 spore counted, including the only daphnia that was infected in Age 6 Day trt.
 reg_data %>%
   filter(spore_counts == 1)
-  
 ```
 
 There are a good deal of zeros. The variance is much bigger than the mean in many treatment combinations. Zero-inflated negative binomial makes sense here.
-
 ```{r}
 ggplot() +
   geom_jitter(data = filter(reg_data, Time_treatment == "Day"), 
@@ -658,7 +599,6 @@ reg_data %>%
 reg_data %>%
   ggplot() +
   geom_point(aes(x = Length_at_exposure_mm^3, y = clog(spore_counts)))
-
 ```
 Hmm, maybe length at exposure isn't that informative? Ignoring the zero counts, it appear that log(spore counts) doesn't vary with length of volume of daphnia at exposure.
 
@@ -667,7 +607,6 @@ Hmm, maybe length at exposure isn't that informative? Ignoring the zero counts, 
 library(pscl)
 #library(countreg)
 library(lmtest)
-
 ```
 
 ```{r eval = FALSE}
@@ -794,8 +733,6 @@ confint(cont_count)
 #get average over age for above
 summary(contrast(emmeans(zi_nb_all, ~ Time_treatment, mode = "count"), "revpairwise"))
 confint(contrast(emmeans(zi_nb_all, ~ Time_treatment, mode = "count"), "revpairwise"))
-
-
 ```
 
 
@@ -854,7 +791,7 @@ combined + plot_layout(guides = "collect") + plot_annotation(tag_levels = 'A')
 ggsave("figure4.png", width = 7, height = 5)
 ```
 
-Appendix Figure 2
+#Appendix Figure 2
 ```{r}
 ggplot(mapping=aes(x=Time_treatment, y = sc_fr_sw, fill = Time_treatment), data = reg_data) + 
   geom_boxplot() + 
