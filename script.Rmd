@@ -270,9 +270,9 @@ ggplot() +
   scale_fill_manual(values=c("#0033cc", "#ffcc33"))+
   theme_bw()
 
-#IS PO predicted by Age + Hours of the day
-summary(po_plot<-glm(PO ~ Age + Hours, family = gaussian(link = "log"), data = po_correct))
-with(summary(po_plot), 1 - deviance/null.deviance) #rsquared .226
+#IS PO predicted by Age * Hours of the day
+summary(po_plot<-glm(PO ~ as.factor(Age) * Hours, family = gaussian(link = "log"), data = po_correct))
+with(summary(po_plot), 1 - deviance/null.deviance) #rsquared .29
 crit <- 1.96
 nd2 <- expand.grid(Hours=c(3,6,9,12,15,18,21,24), Age = seq(6, 9, length.out = 4))
 po_fig <- predict(po_plot, newdata = nd2, se.fit = TRUE) %>%
@@ -308,8 +308,8 @@ ggplot() +
 ggsave("po_figure.png", bg = "transparent", height =5, width = 9)
 
 #Is the increasing size with age driving the age patterns?
-summary(po_plot2<-glm(size_cor ~ Age + Hours, family = gaussian(link = "log"), data = po_correct))
-with(summary(po_plot2), 1 - deviance/null.deviance) #rsquared .14
+summary(po_plot2<-glm(size_cor ~ as.factor(Age) * Hours, family = gaussian(link = "log"), data = po_correct))
+with(summary(po_plot2), 1 - deviance/null.deviance) #rsquared .21
 crit <- 1.96
 nd3 <- expand.grid(Hours=c(3,6,9,12,15,18,21,24), Age = seq(6, 9, length.out = 4))
 po_fig2 <- predict(po_plot2, newdata = nd3, se.fit = TRUE) %>%
